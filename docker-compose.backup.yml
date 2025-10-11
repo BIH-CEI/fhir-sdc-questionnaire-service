@@ -1,0 +1,34 @@
+# Optional backup service
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.backup.yml up -d
+
+version: '3.8'
+
+services:
+  # Automated backup service
+  backup:
+    image: postgres:15-alpine
+    container_name: fhir-backup
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: 7
+    volumes:
+      - ./backups:/backups
+      - ./scripts:/scripts:ro
+    networks:
+      - fhir-network
+    depends_on:
+      - db
+    # Run backup daily at 2 AM
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      echo '0 2 * * * /scripts/backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+      crond -f -l 2
+      "

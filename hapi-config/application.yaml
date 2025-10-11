@@ -1,0 +1,31 @@
+# HAPI FHIR Configuration
+# This file will be mounted into the HAPI FHIR container
+
+hapi:
+  fhir:
+    # Server settings
+    fhir_version: R4
+
+    # Implementation Guides - Auto-install at startup
+    implementationguides:
+      mii_pro:
+        name: de.medizininformatikinitiative.kerndatensatz.pro
+        version: 2026.0.0-ballot
+        # STORE_AND_INSTALL: Import resources into database (searchable)
+        # STORE_ONLY: Only for validation, not searchable
+        installMode: STORE_AND_INSTALL
+        # Download from Simplifier package registry
+        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pro/2026.0.0-ballot
+        # Reload on every startup (useful for development)
+        reloadExisting: false
+        # Install dependencies automatically
+        fetchDependencies: true
+
+    # Validation
+    validation:
+      enabled: true
+      requests_enabled: true
+
+    # Subscription (optional)
+    subscription:
+      enabled: false
