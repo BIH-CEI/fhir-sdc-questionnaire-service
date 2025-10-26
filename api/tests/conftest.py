@@ -5,9 +5,26 @@ import httpx
 import time
 import logging
 import os
+import uuid
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def generate_unique_id() -> str:
+    """Generate a short unique ID for test resources."""
+    return str(uuid.uuid4())[:8]
+
+
+def make_unique_url(base_url: str) -> str:
+    """Add unique suffix to URL to prevent collisions."""
+    unique_id = generate_unique_id()
+    return f"{base_url}-{unique_id}"
+
 
 # ============================================================================
 # FHIR Server Configuration
@@ -183,6 +200,50 @@ async def hapi_client(fhir_server):
 
 
 @pytest.fixture
+async def cleanup_all_resources(fhir_server, request):
+    """
+    Optional fixture to clean up ALL test resources.
+
+    Use this explicitly in tests that need a clean slate:
+        async def test_something(cleanup_all_resources, fhir_server):
+            # Test runs with clean database
+
+    Or call it manually:
+        await cleanup_all_resources()
+    """
+    async def _cleanup():
+        # Skip cleanup for read-only servers
+        server_profile = request.config.getoption("--fhir-server")
+        if server_profile == "smile":
+            return
+
+        # Clean up test resources
+        resource_types = ['Questionnaire', 'ValueSet', 'CodeSystem', 'Library']
+
+        for resource_type in resource_types:
+            try:
+                response = await fhir_server.get(f"/{resource_type}")
+
+                if response.status_code == 200:
+                    bundle = response.json()
+                    entries = bundle.get('entry', [])
+
+                    for entry in entries:
+                        try:
+                            resource_id = entry['resource']['id']
+                            await fhir_server.delete(f"/{resource_type}/{resource_id}")
+                            logger.debug(f"Cleaned up {resource_type}/{resource_id}")
+                        except Exception as e:
+                            logger.debug(f"Could not delete {resource_type}: {e}")
+
+            except Exception as e:
+                logger.debug(f"Cleanup error for {resource_type}: {e}")
+
+    # Don't run automatically - just provide the function
+    return _cleanup
+
+
+@pytest.fixture
 async def api_client():
     """FastAPI test client."""
     async with httpx.AsyncClient(base_url=API_BASE_URL, timeout=30.0) as client:
@@ -252,7 +313,9 @@ async def clean_questionnaire(fhir_server):
 
 @pytest.fixture
 async def clean_valueset(fhir_server):
-    """Create a ValueSet and clean it up after test."""
+    """
+    Create a ValueSet and clean it up after test.
+    """
     created_ids = []
 
     async def _create(valueset: Dict[str, Any]) -> str:
@@ -275,7 +338,9 @@ async def clean_valueset(fhir_server):
 
 @pytest.fixture
 async def clean_codesystem(fhir_server):
-    """Create a CodeSystem and clean it up after test."""
+    """
+    Create a CodeSystem and clean it up after test.
+    """
     created_ids = []
 
     async def _create(codesystem: Dict[str, Any]) -> str:
