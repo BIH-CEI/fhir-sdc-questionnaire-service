@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Test HAPI FHIR Server
+  hapi-fhir-test:
+    image: hapiproject/hapi:latest  # Currently 8.4.0 (2025-10-26)
+    container_name: hapi-fhir-test
+    ports:
+      - "8081:8080"
+    environment:
+      # FHIR version
+      hapi.fhir.fhir_version: R4
+
+      # Performance optimizations for testing
+      hapi.fhir.defer_indexing_for_codesystems_of_size: 0
+      hapi.fhir.enable_index_missing_fields: false
+
+      # Enable all FHIR operations
+      hapi.fhir.allow_multiple_delete: true
+      hapi.fhir.allow_external_references: true
+
+      # Enable validation interceptor (enforces required fields)
+      hapi.fhir.validation.requests_enabled: true
+      hapi.fhir.validation.responses_enabled: false  # Don't validate responses
+      hapi.fhir.enable_repository_validating_interceptor: true
+
+      # Logging
+      spring.jpa.show_sql: false
+      logging.level.ca.uhn.fhir: INFO
+
+      # Use in-memory H2 database for speed
+      spring.datasource.url: jdbc:h2:mem:testdb
+      spring.datasource.driverClassName: org.h2.Driver
+      spring.jpa.database-platform: org.hibernate.dialect.H2Dialect
+
+    tmpfs:
+      - /tmp/hapi-work
+
+    # Healthcheck disabled - HAPI container doesn't have curl/wget/ls
+    # Tests will wait for HAPI to respond instead
+    # Note: MII PRO IG is NOT loaded in test instance (keep tests fast and isolated)
+
+  # FastAPI application (test configuration)
+  fastapi-test:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: sdc-form-manager-test
+    ports:
+      - "8001:8000"
+    environment:
+      FHIR_BASE_URL: http://hapi-fhir-test:8080/fhir
+      LOG_LEVEL: DEBUG
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    depends_on:
+      - hapi-fhir-test
+
+    # Override command for testing
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+networks:
+  default:
+    name: fhir-sdc-test-network

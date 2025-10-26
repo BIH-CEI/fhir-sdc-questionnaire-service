@@ -36,12 +36,20 @@ class FHIRClientService:
         try:
             resources = self.client.resources(resource_type)
 
+            # Extract _count for use with .limit() (fhirpy's proper API)
+            count_limit = search_params.pop('_count', None)
+
             # Apply search parameters
             for key, value in search_params.items():
                 if value is not None:
                     resources = resources.search(**{key: value})
 
-            result = await resources.fetch_all()
+            # Apply limit using fhirpy's .limit() method (not as search param)
+            if count_limit is not None:
+                resources = resources.limit(count_limit)
+
+            # Fetch one page of results
+            result = await resources.fetch()
             logger.info(f"Found {len(result)} {resource_type} resources")
             return result
 

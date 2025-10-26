@@ -255,6 +255,52 @@ async def delete_questionnaire(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{questionnaire_id}/$package", response_model=dict)
+async def package_questionnaire_by_id(
+    questionnaire_id: str = Path(..., description="Questionnaire ID"),
+    include_dependencies: bool = Query(
+        True,
+        description="Include transitive dependencies (ValueSets, CodeSystems, Libraries)"
+    ),
+    package_service: PackageService = Depends(get_package_service)
+):
+    """
+    Package a Questionnaire with all its dependencies (SDC $package operation - instance level).
+
+    Returns a FHIR Bundle containing:
+    - The Questionnaire
+    - All referenced ValueSets
+    - All referenced CodeSystems
+    - All referenced Libraries
+    - All referenced StructureMaps
+    - OperationOutcomes for any warnings
+
+    **Example:**
+    ```
+    GET /api/questionnaires/diabetes-screening/$package
+    GET /api/questionnaires/phq-9/$package?include-dependencies=false
+    ```
+    """
+    try:
+        bundle = await package_service.package_by_id(
+            questionnaire_id,
+            include_dependencies
+        )
+
+        logger.info(
+            f"Packaged Questionnaire/{questionnaire_id} with "
+            f"{len(bundle.get('entry', []))} entries"
+        )
+
+        return bundle
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error packaging questionnaire {questionnaire_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/$package", response_model=dict)
 async def package_questionnaire_resource(
     questionnaire: dict = Body(
@@ -352,52 +398,6 @@ async def package_questionnaire_by_url(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error packaging questionnaire by URL {url}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{questionnaire_id}/$package", response_model=dict)
-async def package_questionnaire_by_id(
-    questionnaire_id: str = Path(..., description="Questionnaire ID"),
-    include_dependencies: bool = Query(
-        True,
-        description="Include transitive dependencies (ValueSets, CodeSystems, Libraries)"
-    ),
-    package_service: PackageService = Depends(get_package_service)
-):
-    """
-    Package a Questionnaire with all its dependencies (SDC $package operation - instance level).
-
-    Returns a FHIR Bundle containing:
-    - The Questionnaire
-    - All referenced ValueSets
-    - All referenced CodeSystems
-    - All referenced Libraries
-    - All referenced StructureMaps
-    - OperationOutcomes for any warnings
-
-    **Example:**
-    ```
-    GET /api/questionnaires/diabetes-screening/$package
-    GET /api/questionnaires/phq-9/$package?include-dependencies=false
-    ```
-    """
-    try:
-        bundle = await package_service.package_by_id(
-            questionnaire_id,
-            include_dependencies
-        )
-
-        logger.info(
-            f"Packaged Questionnaire/{questionnaire_id} with "
-            f"{len(bundle.get('entry', []))} entries"
-        )
-
-        return bundle
-
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error packaging questionnaire {questionnaire_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

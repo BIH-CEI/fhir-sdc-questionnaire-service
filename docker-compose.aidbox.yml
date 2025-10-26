@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # Aidbox FHIR Server
+  aidbox:
+    image: healthsamurai/aidboxone:2509.0  # Pinned version for reproducibility
+    container_name: aidbox-fhir-test
+    ports:
+      - "8888:8080"  # Map host:8888 to container:8080
+    environment:
+      # License key (required) - set via .env file or export AIDBOX_LICENSE=...
+      AIDBOX_LICENSE: ${AIDBOX_LICENSE}
+
+      # Admin credentials
+      AIDBOX_ADMIN_ID: admin
+      AIDBOX_ADMIN_PASSWORD: password
+
+      # FHIR version
+      AIDBOX_FHIR_VERSION: 4.0.0
+
+      # Database connection
+      PGHOST: aidbox-db
+      PGPORT: 5432
+      PGDATABASE: aidbox
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+      # Performance settings
+      AIDBOX_ES_URL: http://aidbox-db:5432
+
+    depends_on:
+      - aidbox-db
+
+    # Wait for PostgreSQL to be ready
+    restart: on-failure
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # PostgreSQL database for Aidbox
+  aidbox-db:
+    image: postgres:14
+    container_name: aidbox-db
+    environment:
+      POSTGRES_DB: aidbox
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - aidbox-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aidbox-data:
+
+networks:
+  default:
+    name: fhir-sdc-aidbox-network

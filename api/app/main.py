@@ -63,11 +63,9 @@ async def root():
     }
 
 
-# Include routers (to be implemented)
-# from app.routers import questionnaires, valuesets, terminology
-# app.include_router(questionnaires.router)
-# app.include_router(valuesets.router)
-# app.include_router(terminology.router)
+# Include routers
+from app.routers import questionnaires
+app.include_router(questionnaires.router)
 
 
 if __name__ == "__main__":

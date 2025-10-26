@@ -1,0 +1,95 @@
+name: SDC Compliance & Integration Tests
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          cd api
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Start HAPI FHIR Test Server
+        run: |
+          docker-compose -f docker-compose.test.yml up -d hapi-fhir-test
+          echo "Waiting for HAPI FHIR to be ready..."
+
+      - name: Wait for HAPI FHIR to be healthy
+        run: |
+          timeout 120 bash -c 'until docker inspect hapi-fhir-test | grep -q "\"Health\".*\"healthy\""; do sleep 2; done' || exit 1
+
+      - name: Start FastAPI Test Server
+        run: |
+          docker-compose -f docker-compose.test.yml up -d fastapi-test
+          echo "Waiting for FastAPI to be ready..."
+          sleep 10
+
+      - name: Run SDC Compliance Tests
+        run: |
+          cd api
+          pytest tests/sdc_compliance/ -v --tb=short --color=yes
+
+      - name: Run Integration Tests
+        run: |
+          cd api
+          pytest tests/integration/ -v --tb=short --color=yes
+
+      - name: Run All Tests with Coverage
+        run: |
+          cd api
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=html --cov-report=term
+
+      - name: Upload Coverage Reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./api/coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: |
+            api/htmlcov/
+            api/coverage.xml
+
+      - name: Display Docker Logs on Failure
+        if: failure()
+        run: |
+          echo "=== HAPI FHIR Logs ==="
+          docker logs hapi-fhir-test
+          echo "=== FastAPI Logs ==="
+          docker logs sdc-form-manager-test
+
+      - name: Tear down test environment
+        if: always()
+        run: |
+          docker-compose -f docker-compose.test.yml down -v
