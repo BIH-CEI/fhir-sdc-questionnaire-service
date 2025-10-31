@@ -200,20 +200,28 @@ See deployment guides in `docs/deployment/`:
 
 ## SDC Capabilities
 
-This Form Manager implements the following SDC capabilities:
+This Form Manager implements the following SDC capabilities based on the [SDC Form Manager Capability Statement](https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html):
 
 ### Core Resources (SHALL Support)
-- **Questionnaire** - Read, Create, Update, Delete, $package
-- **ValueSet** - Read, Create, Update, $expand, $validate-code
-- **CodeSystem** - Read, Create, Update, $lookup
+- **Questionnaire** - Read, Create, Update, Delete
+- **ValueSet** - Read, Create, Update, Delete, $expand, $validate-code
+- **CodeSystem** - Read, Create, Update, Delete, $lookup
+- **Library** - Read, Create, Update, Delete
 
-### Terminology Services
-- `ValueSet/$expand` - Expand value sets with filtering
-- `ValueSet/$validate-code` - Validate codes
-- `CodeSystem/$lookup` - Look up code details
+### SDC Operations (with CQL enabled)
+- ✅ `Questionnaire/$populate` - Pre-fill questionnaires with patient data
+- ✅ `QuestionnaireResponse/$extract` - Extract structured data from responses
+- ✅ `Questionnaire/$package` - Generate bundle with dependencies
+- ⚠️ `Questionnaire/$assemble` - Assemble modular questionnaires (requires custom implementation)
 
-### Custom Operations
-- `Questionnaire/$package` - Generate bundle with dependencies
+### Implementation Guides Installed
+- **hl7.fhir.uv.sdc** v3.0.0 - SDC profiles and resources
+- **de.medizininformatikinitiative.kerndatensatz.pro** v2026.0.0-ballot - MII PRO
+
+### Configuration Documentation
+- **[SDC_CONFIGURATION.md](SDC_CONFIGURATION.md)** - How we enabled SDC support (CQL + SDC IG)
+- **[IMPLEMENTING_ASSEMBLE_OPERATION.md](IMPLEMENTING_ASSEMBLE_OPERATION.md)** - Detailed guide for implementing $assemble
+- **[ASSEMBLE_OPERATION_SUMMARY.md](ASSEMBLE_OPERATION_SUMMARY.md)** - Quick reference for $assemble implementation options
 
 ## Troubleshooting
 
