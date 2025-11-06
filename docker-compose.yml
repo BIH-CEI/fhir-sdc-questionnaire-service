@@ -55,6 +55,9 @@ services:
       # Validation
       hapi.fhir.validation_enabled: true
       hapi.fhir.validation_server_url: http://hapi-fhir:8080/fhir
+
+      # Clinical Reasoning / CQL - Required for SDC operations like $populate and $extract
+      hapi.fhir.cql_enabled: true
     ports:
       - "8080:8080"
     depends_on:

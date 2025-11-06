@@ -21,6 +21,15 @@ hapi:
         # Install dependencies automatically
         fetchDependencies: true
 
+      # SDC (Structured Data Capture) Implementation Guide
+      # Provides Questionnaire profiles and operations for form management
+      sdc:
+        name: hl7.fhir.uv.sdc
+        version: 3.0.0
+        installMode: STORE_AND_INSTALL
+        reloadExisting: false
+        fetchDependencies: true
+
     # Validation
     validation:
       enabled: true
