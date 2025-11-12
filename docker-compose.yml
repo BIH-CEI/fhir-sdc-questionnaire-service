@@ -26,6 +26,12 @@ services:
     env_file:
       - .env
     environment:
+      # Load additional YAML config from mounted volume
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/data/hapi/
+
+      # Clinical Reasoning Module - Enables $populate, $extract, CQL operations
+      hapi.fhir.cr.enabled: true
+
       # Database configuration (uses env vars from .env)
       spring.datasource.url: jdbc:postgresql://db:5432/${POSTGRES_DB}
       spring.datasource.username: ${POSTGRES_USER}
@@ -56,8 +62,9 @@ services:
       hapi.fhir.validation_enabled: true
       hapi.fhir.validation_server_url: http://hapi-fhir:8080/fhir
 
-      # Clinical Reasoning / CQL - Required for SDC operations like $populate and $extract
-      hapi.fhir.cql_enabled: true
+      # Clinical Reasoning / CQL - Enabled via application.yaml (hapi.fhir.cr.enabled: true)
+      # Note: Environment var approach would be: hapi.fhir.cql_enabled: true (deprecated)
+      # Using application.yaml for better configuration management
     ports:
       - "8080:8080"
     depends_on:
@@ -65,15 +72,30 @@ services:
         condition: service_healthy
     networks:
       - fhir-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+    # Healthcheck disabled - HAPI container doesn't have curl/wget
+    # Services will wait via sleep delay instead
     volumes:
       - hapi_data:/data/hapi
       - ./hapi-config/application.yaml:/data/hapi/application.yaml:ro
+
+  # ISiK Runtime Installer - Runs once after HAPI startup
+  isik-installer:
+    image: python:3.11-slim
+    container_name: isik-installer
+    depends_on:
+      - hapi-fhir
+    networks:
+      - fhir-network
+    volumes:
+      - ./scripts:/scripts
+    environment:
+      HAPI_BASE_URL: http://hapi-fhir:8080/fhir
+    command: >
+      sh -c "pip install -q requests &&
+             python3 /scripts/install-isik-runtime.py &&
+             echo 'ISiK installation complete. Container will exit.' &&
+             exit 0"
+    restart: "no"
 
   # FastAPI custom business logic layer
   fastapi:
@@ -86,13 +108,19 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      hapi-fhir:
-        condition: service_healthy
+      - hapi-fhir
     networks:
       - fhir-network
     volumes:
       - ./api:/app
-    command: uvicorn app.main:app --host ${API_HOST} --port ${API_PORT} --reload
+    command: >
+      sh -c "sleep 30 && uvicorn app.main:app --host ${API_HOST} --port ${API_PORT} --reload"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
 
   # React frontend (optional, for later)
   # frontend:

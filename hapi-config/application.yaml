@@ -6,20 +6,21 @@ hapi:
     # Server settings
     fhir_version: R4
 
+    # Clinical Reasoning Module (enables $populate, $extract, CQL operations)
+    cr:
+      enabled: true
+
     # Implementation Guides - Auto-install at startup
     implementationguides:
-      mii_pro:
-        name: de.medizininformatikinitiative.kerndatensatz.pro
-        version: 2026.0.0-ballot
-        # STORE_AND_INSTALL: Import resources into database (searchable)
-        # STORE_ONLY: Only for validation, not searchable
-        installMode: STORE_AND_INSTALL
-        # Download from Simplifier package registry
-        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pro/2026.0.0-ballot
-        # Reload on every startup (useful for development)
-        reloadExisting: false
-        # Install dependencies automatically
-        fetchDependencies: true
+      # MII PRO (Medizininformatik Initiative PRO)
+      # DISABLED: Requires Simplifier authentication (pre-release ballot package)
+      # mii_pro:
+      #   name: de.medizininformatikinitiative.kerndatensatz.pro
+      #   version: 2026.0.0-ballot
+      #   installMode: STORE_AND_INSTALL
+      #   packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pro/2026.0.0-ballot
+      #   reloadExisting: false
+      #   fetchDependencies: true
 
       # SDC (Structured Data Capture) Implementation Guide
       # Provides Questionnaire profiles and operations for form management
@@ -30,7 +31,22 @@ hapi:
         reloadExisting: false
         fetchDependencies: true
 
+      # German ISiK (German Interoperability Standard)
+      # DISABLED: Snapshot generation causes HAPI startup failure
+      # Error: HAPI-1290 when generating snapshot for ISiKKoerperkerntemperatur
+      # Even STORE_ONLY mode triggers snapshot generation during installation
+      # Workaround: Runtime installation via scripts/install-isik-runtime.py
+      # The docker-compose.yml isik-installer service runs this automatically
+      # isik:
+      #   name: de.gematik.isik
+      #   version: 5.1.0
+      #   installMode: STORE_ONLY
+      #   reloadExisting: false
+      #   fetchDependencies: false
+
     # Validation
+    # Enabled for SDC profile validation
+    # Note: Was disabled due to ISiK compatibility issues, but ISiK is now disabled
     validation:
       enabled: true
       requests_enabled: true
