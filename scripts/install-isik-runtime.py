@@ -29,7 +29,12 @@ ISIK_VERSION = "5.1.0"
 MAX_WAIT_SECONDS = 300
 CHECK_INTERVAL = 5
 
-# ISiK dependencies to install first (in order)
+# Installation strategy:
+# Try installing ISiK directly with fetchDependencies=true first.
+# If that fails, fall back to manual dependency installation + individual profile upload.
+TRY_DIRECT_ISIK_INSTALL = True
+
+# ISiK dependencies to install manually if direct install fails
 DEPENDENCIES = [
     {"name": "de.basisprofil.r4", "version": "1.5.4"},
 ]
@@ -219,7 +224,7 @@ def main():
     print("=" * 50)
     print(f"HAPI URL: {HAPI_BASE_URL}")
     print(f"Package: {ISIK_PACKAGE_NAME}#{ISIK_VERSION}")
-    print(f"Dependencies: {len(DEPENDENCIES)} package(s)")
+    print(f"Strategy: {'Direct install with dependencies' if TRY_DIRECT_ISIK_INSTALL else 'Manual dependency + profile upload'}")
     print()
 
     # Step 1: Wait for HAPI
@@ -229,10 +234,27 @@ def main():
     # Step 2: Wait for Hibernate Search
     wait_for_hibernate_search()
 
-    # Step 3: Install dependencies first
+    # Step 3: Try direct ISiK installation with fetchDependencies=true
+    if TRY_DIRECT_ISIK_INSTALL:
+        print("\n" + "=" * 50)
+        print("Attempting Direct ISiK Installation")
+        print("(with fetchDependencies=true)")
+        print("=" * 50)
+
+        success = install_dependency_package(ISIK_PACKAGE_NAME, ISIK_VERSION)
+
+        if success:
+            print("\n" + "=" * 50)
+            print("✓ ISiK installed successfully via direct installation!")
+            print("=" * 50)
+            return 0
+        else:
+            print("\n⚠ Direct installation failed. Falling back to manual installation...")
+
+    # Fallback: Step 4 - Install dependencies manually
     if DEPENDENCIES:
         print("\n" + "=" * 50)
-        print(f"Installing {len(DEPENDENCIES)} Dependencies")
+        print(f"Installing {len(DEPENDENCIES)} Dependencies Manually")
         print("=" * 50)
 
         for dep in DEPENDENCIES:
@@ -243,19 +265,19 @@ def main():
 
         print("\n✓ Dependency installation phase complete")
 
-    # Step 4: Download ISiK package
+    # Fallback: Step 5 - Download ISiK package
     package_path = download_isik_package()
     if not package_path:
         return 1
 
-    # Step 5: Extract package
+    # Fallback: Step 6 - Extract package
     extract_dir = extract_package(package_path)
     if not extract_dir:
         return 1
 
-    # Step 6: Upload ISiK StructureDefinitions
+    # Fallback: Step 7 - Upload ISiK StructureDefinitions individually
     print("\n" + "=" * 50)
-    print("Installing ISiK Profiles")
+    print("Installing ISiK Profiles Individually")
     print("=" * 50)
     if not upload_structure_definitions(extract_dir):
         return 1

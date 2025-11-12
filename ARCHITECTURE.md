@@ -193,6 +193,158 @@ pytest tests/ --fhir-url=http://custom-server:8080/fhir -v
 3. **Language choice** - Python FastAPI vs Java HAPI
 4. **Deployment flexibility** - Can scale FastAPI and HAPI independently
 
+### Docker Compose Architecture Decisions
+
+#### Test vs Production Environments
+
+We maintain two separate Docker Compose configurations:
+
+1. **Production (`docker-compose.yml`)**
+   - PostgreSQL + HAPI FHIR + FastAPI
+   - Persistent volumes for data storage
+   - HAPI uses PostgreSQL database
+   - Ports: 8080 (HAPI), 8000 (FastAPI), 5432 (PostgreSQL)
+   - Network name: `fhir-network`
+   - Use case: Development and production deployment
+
+2. **Test (`docker-compose.test.yml`)**
+   - HAPI FHIR + FastAPI only (no PostgreSQL)
+   - HAPI uses in-memory H2 database
+   - Ports: 8081 (HAPI), 8001 (FastAPI)
+   - Network name: `fhir-sdc-test-network`
+   - Use case: CI/CD and local testing
+
+**Rationale:**
+- Test environment needs to be fast (H2 in-memory) and isolated
+- Production needs data persistence (PostgreSQL with volumes)
+- Different ports prevent conflicts when running both simultaneously
+- Separate networks ensure complete isolation
+
+#### Healthcheck Strategy
+
+**Production Environment:**
+- PostgreSQL: Has healthcheck using `pg_isready`
+- FastAPI: Has healthcheck using `curl http://localhost:8000/health`
+- HAPI: No healthcheck (container doesn't include curl/wget/ls)
+- **Solution**: Use `depends_on` with service_healthy condition for PostgreSQL, and 30-second sleep delay for HAPI startup
+
+**Test Environment:**
+- HAPI: No healthcheck
+- FastAPI: No explicit healthcheck in compose file
+- **Solution**: Tests wait for servers using retry logic in conftest.py fixtures
+
+**Rationale:**
+- HAPI container lacks shell utilities for healthchecks
+- Adding healthcheck dependencies would require custom HAPI image
+- Sleep delays + application-level retries are simpler and sufficient
+- Tests are responsible for verifying server readiness (better error messages)
+
+#### Environment Variable Configuration
+
+**Test Environment (`docker-compose.test.yml`):**
+```yaml
+environment:
+  FHIR_BASE_URL: http://hapi-fhir-test:8080/fhir  # Docker network name
+  API_BASE_URL: http://localhost:8000              # For external access
+```
+
+**Test Configuration (`conftest.py`):**
+```python
+SERVER_PROFILES = {
+    "hapi": {
+        "base_url": os.getenv("FHIR_BASE_URL", "http://localhost:8081/fhir"),
+        # ...
+    }
+}
+```
+
+**Rationale:**
+- Tests running inside Docker containers use Docker network names (e.g., `hapi-fhir-test`)
+- Tests running on host use `localhost` with mapped ports
+- Environment variables allow flexibility without code changes
+- `os.getenv()` in conftest.py enables environment-based configuration
+
+#### Docker Networking
+
+**Key Decision**: Use Docker network names for inter-container communication
+
+**Example:**
+- FastAPI container accesses HAPI at: `http://hapi-fhir-test:8080/fhir`
+- Host machine accesses HAPI at: `http://localhost:8081/fhir`
+
+**Rationale:**
+- Docker's internal DNS resolves service names to container IPs
+- Avoids port mapping issues and network conflicts
+- More reliable than localhost (which can fail in Docker-in-Docker scenarios)
+- Follows Docker Compose best practices
+
+#### Volume Management and Cleanup
+
+**Production Volumes:**
+- `postgres_data`: PostgreSQL database files
+- `hapi_data`: HAPI configuration and work files
+
+**Test Volumes:**
+- None (ephemeral containers)
+- Test data deleted on container removal
+
+**Cleanup Strategy:**
+```bash
+# Clean test environment (safe, no data loss)
+docker-compose -f docker-compose.test.yml down -v
+
+# Clean production (DESTROYS DATA - use carefully)
+docker-compose down -v
+```
+
+**Rationale:**
+- Test isolation requires clean state between runs
+- Production data persistence requires named volumes
+- Explicit volume flags prevent accidental data loss
+- Test fixtures handle resource cleanup programmatically
+
+#### Test Isolation Strategy
+
+**Per-Test Resource Cleanup:**
+- Fixtures like `clean_questionnaire`, `clean_valueset`, `clean_codesystem`
+- Track created resource IDs and delete in teardown
+- Each test gets isolated resources
+
+**Optional Full Cleanup:**
+- `cleanup_all_resources` fixture (not run by default)
+- Deletes ALL test resources across resource types
+- Use explicitly when test needs completely clean database
+
+**Rationale:**
+- Per-test cleanup prevents test interference
+- Optional full cleanup handles edge cases
+- Balance between isolation and test speed
+- Supports both parallel and sequential test execution
+
+#### HAPI Configuration
+
+**Test HAPI (`docker-compose.test.yml`):**
+```yaml
+environment:
+  hapi.fhir.validation.requests_enabled: true
+  hapi.fhir.enable_repository_validating_interceptor: true
+  spring.datasource.url: jdbc:h2:mem:testdb
+```
+
+**Production HAPI (`docker-compose.yml`):**
+```yaml
+environment:
+  hapi.fhir.cql_enabled: true
+  hapi.fhir.validation_enabled: true
+  spring.datasource.url: jdbc:postgresql://db:5432/${POSTGRES_DB}
+```
+
+**Rationale:**
+- Test HAPI prioritizes speed (H2 in-memory) over features
+- Production HAPI enables full SDC capabilities (CQL for $populate/$extract)
+- Both validate requests to catch FHIR compliance issues early
+- Configuration via environment variables allows easy tuning without rebuilding images
+
 ## Data Flow Example: $package Operation
 
 ```

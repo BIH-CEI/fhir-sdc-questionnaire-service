@@ -34,7 +34,7 @@ def make_unique_url(base_url: str) -> str:
 SERVER_PROFILES = {
     "hapi": {
         "name": "HAPI FHIR",
-        "base_url": "http://localhost:8081/fhir",
+        "base_url": os.getenv("FHIR_BASE_URL", "http://localhost:8081/fhir"),
         "validation_strict": False,  # HAPI is lenient with validation
         "supports_xml": True,
         "supports_graphql": False,

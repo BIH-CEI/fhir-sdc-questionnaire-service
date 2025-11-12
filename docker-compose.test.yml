@@ -50,6 +50,7 @@ services:
       - "8001:8000"
     environment:
       FHIR_BASE_URL: http://hapi-fhir-test:8080/fhir
+      API_BASE_URL: http://localhost:8000
       LOG_LEVEL: DEBUG
       API_HOST: 0.0.0.0
       API_PORT: 8000
