@@ -36,7 +36,7 @@ jobs:
 
       - name: Start HAPI FHIR Test Server
         run: |
-          docker-compose -f docker-compose.test.yml up -d hapi-fhir-test
+          docker compose -f docker-compose.test.yml up -d hapi-fhir-test
           echo "Waiting for HAPI FHIR to be ready..."
 
       - name: Wait for HAPI FHIR to be healthy
@@ -45,7 +45,7 @@ jobs:
 
       - name: Start FastAPI Test Server
         run: |
-          docker-compose -f docker-compose.test.yml up -d fastapi-test
+          docker compose -f docker-compose.test.yml up -d fastapi-test
           echo "Waiting for FastAPI to be ready..."
           sleep 10
 
@@ -92,4 +92,4 @@ jobs:
       - name: Tear down test environment
         if: always()
         run: |
-          docker-compose -f docker-compose.test.yml down -v
+          docker compose -f docker-compose.test.yml down -v
