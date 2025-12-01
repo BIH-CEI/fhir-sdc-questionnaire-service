@@ -20,7 +20,11 @@ MII_PACKAGES = {
         "name": "de.medizininformatikinitiative.kerndatensatz.person",
         "version": "2025.0.0"
     },
-    # Add more packages as needed
+    "mii-pros-2026-rc1": {
+        "url": "https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/2026.0.0-rc.1/package.tgz",
+        "name": "de.medizininformatikinitiative.kerndatensatz.pros",
+        "version": "2026.0.0-rc.1"
+    },
 }
 
 

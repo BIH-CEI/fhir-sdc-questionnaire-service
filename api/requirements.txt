@@ -15,3 +15,6 @@ aiohttp==3.9.1
 # Utilities
 python-dotenv==1.0.0
 python-multipart==0.0.6
+
+# MII PROMS
+mii-proms==2026.0.0-rc.1

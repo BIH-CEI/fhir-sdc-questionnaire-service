@@ -29,7 +29,15 @@ hapi:
         version: 3.0.0
         installMode: STORE_AND_INSTALL
         reloadExisting: false
-        fetchDependencies: true
+        fetchDependencies: false
+      mii_pros:
+        name: de.medizininformatikinitiative.kerndatensatz.pros
+        version: 2026.0.0-rc.1
+        installMode: STORE_AND_INSTALL
+        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/2026.0.0-rc.1
+        reloadExisting: false
+        fetchDependencies: false
+
 
       # German ISiK (German Interoperability Standard)
       # DISABLED: Snapshot generation causes HAPI startup failure

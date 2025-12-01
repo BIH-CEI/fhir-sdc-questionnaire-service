@@ -1,0 +1,320 @@
+version: '3.8'
+
+# Multi-Site PROMIS Exchange Workshop Environment
+#
+# Components:
+# - Site A (Port 8081): Collection site with PROMIS v1.0
+# - Site B (Port 8082): Review site with PROMIS v2.0
+# - Terminology Proxy (Port 3000): Enhanced ONTOSERVER wrapper
+# - Demo UI (Port 8000): Workshop scenario controller
+#
+# Usage:
+#   docker compose -f docker-compose.workshop.yml up -d
+#   Access demo UI: http://localhost:8000
+#   Access Site A: http://localhost:8081/fhir
+#   Access Site B: http://localhost:8082/fhir
+
+services:
+  # PostgreSQL for Site A
+  db-site-a:
+    image: postgres:15-alpine
+    container_name: workshop-db-site-a
+    environment:
+      POSTGRES_DB: hapi_site_a
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - db_site_a_data:/var/lib/postgresql/data
+    networks:
+      - workshop-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi_site_a"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for Site B
+  db-site-b:
+    image: postgres:15-alpine
+    container_name: workshop-db-site-b
+    environment:
+      POSTGRES_DB: hapi_site_b
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - db_site_b_data:/var/lib/postgresql/data
+    networks:
+      - workshop-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi_site_b"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Site A - German Hospital (Collection Site)
+  # PROMIS v1.0, German language, local scoring
+  hapi-site-a:
+    image: hapiproject/hapi:latest
+    container_name: workshop-hapi-site-a
+    environment:
+      # Database configuration
+      spring.datasource.url: jdbc:postgresql://db-site-a:5432/hapi_site_a
+      spring.datasource.username: admin
+      spring.datasource.password: admin
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+
+      # FHIR version
+      hapi.fhir.fhir_version: R4
+
+      # Clinical Reasoning - Enables CQL scoring
+      hapi.fhir.cr.enabled: true
+
+      # Terminology service (will be terminology-proxy)
+      hapi.fhir.terminology_server_url: http://terminology-proxy:3000/fhir
+
+      # Validation
+      hapi.fhir.validation_enabled: true
+
+      # Server metadata
+      hapi.fhir.server_name: "Site A - German Hospital (Collection)"
+      hapi.fhir.server_id: site-a
+
+      # Language default
+      hapi.fhir.default_language: de-DE
+
+      # Search/paging
+      hapi.fhir.default_page_size: 20
+      hapi.fhir.max_page_size: 200
+
+      # CORS
+      hapi.fhir.cors.allowed_origin: "*"
+      hapi.fhir.cors.allow_credentials: true
+
+      # Load YAML config
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/data/hapi/
+    ports:
+      - "8081:8080"
+    depends_on:
+      db-site-a:
+        condition: service_healthy
+    networks:
+      - workshop-network
+    volumes:
+      - hapi_site_a_data:/data/hapi
+      - ./workshop-config/site-a-application.yaml:/data/hapi/application.yaml:ro
+    labels:
+      - "workshop.site=site-a"
+      - "workshop.role=collection"
+      - "workshop.promis-version=1.0"
+
+  # Site B - Multi-Site Clinic (Review Site)
+  # PROMIS v2.0, Multi-language, validation enabled
+  hapi-site-b:
+    image: hapiproject/hapi:latest
+    container_name: workshop-hapi-site-b
+    environment:
+      # Database configuration
+      spring.datasource.url: jdbc:postgresql://db-site-b:5432/hapi_site_b
+      spring.datasource.username: admin
+      spring.datasource.password: admin
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+
+      # FHIR version
+      hapi.fhir.fhir_version: R4
+
+      # Clinical Reasoning
+      hapi.fhir.cr.enabled: true
+
+      # Terminology service
+      hapi.fhir.terminology_server_url: http://terminology-proxy:3000/fhir
+
+      # Validation - stricter on Site B
+      hapi.fhir.validation_enabled: true
+      hapi.fhir.validation_server_url: http://hapi-site-b:8080/fhir
+
+      # Server metadata
+      hapi.fhir.server_name: "Site B - Multi-Site Review Clinic"
+      hapi.fhir.server_id: site-b
+
+      # Multi-language support
+      hapi.fhir.default_language: de-DE
+
+      # Search/paging
+      hapi.fhir.default_page_size: 20
+      hapi.fhir.max_page_size: 200
+
+      # CORS
+      hapi.fhir.cors.allowed_origin: "*"
+      hapi.fhir.cors.allow_credentials: true
+
+      # Load YAML config
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/data/hapi/
+    ports:
+      - "8082:8080"
+    depends_on:
+      db-site-b:
+        condition: service_healthy
+    networks:
+      - workshop-network
+    volumes:
+      - hapi_site_b_data:/data/hapi
+      - ./workshop-config/site-b-application.yaml:/data/hapi/application.yaml:ro
+    labels:
+      - "workshop.site=site-b"
+      - "workshop.role=review"
+      - "workshop.promis-version=2.0"
+
+  # Terminology Proxy - Enhanced wrapper around ONTOSERVER
+  # Provides LOINC-specific APIs and multi-language support
+  terminology-proxy:
+    build:
+      context: ./terminology-proxy
+      dockerfile: Dockerfile
+    container_name: workshop-terminology-proxy
+    environment:
+      # Base ONTOSERVER URL (or could be external)
+      ONTOSERVER_URL: http://ontoserver:8080/fhir
+
+      # Fallback to LOINC FHIR service for missing data
+      LOINC_FHIR_URL: https://fhir.loinc.org
+
+      # API settings
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      LOG_LEVEL: info
+
+      # Feature flags
+      ENABLE_LOINC_PANELS: true
+      ENABLE_ORDINAL_VALUES: true
+      ENABLE_PROMIS_SCORING: false  # Will be enabled in later phase
+
+      # Cache settings
+      CACHE_TTL: 3600  # 1 hour
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ontoserver
+    networks:
+      - workshop-network
+    volumes:
+      - ./terminology-proxy:/app
+      - terminology_cache:/app/cache
+    labels:
+      - "workshop.component=terminology"
+      - "workshop.apis=loinc-panels,ordinals,multi-lang"
+
+  # ONTOSERVER - Base terminology server
+  # (Optional: Can be replaced with external ONTOSERVER or tx.fhir.org)
+  ontoserver:
+    image: aehrc/ontoserver:latest
+    container_name: workshop-ontoserver
+    environment:
+      # License key (trial license or production)
+      # Get from: https://ontoserver.csiro.au/
+      # ONTOSERVER_LICENSE: "your-license-key"
+
+      # Database (uses H2 by default for demo)
+      # For production, use PostgreSQL
+      spring.datasource.url: jdbc:h2:file:/data/ontoserver
+
+      # FHIR version
+      ontoserver.fhir.version: r4
+
+      # Import LOINC (optional, can be pre-loaded)
+      # ontoserver.import.loinc: /data/import/loinc.zip
+    volumes:
+      - ontoserver_data:/data
+    networks:
+      - workshop-network
+    # Note: Internal only, accessed via terminology-proxy
+    labels:
+      - "workshop.component=ontoserver-base"
+
+  # Demo UI - Workshop scenario controller
+  # Provides interactive scenarios and visualization
+  demo-ui:
+    build:
+      context: ./demo-ui
+      dockerfile: Dockerfile
+    container_name: workshop-demo-ui
+    environment:
+      # FHIR endpoints
+      SITE_A_URL: http://hapi-site-a:8080/fhir
+      SITE_B_URL: http://hapi-site-b:8080/fhir
+      TERMINOLOGY_URL: http://terminology-proxy:3000/fhir
+
+      # API settings
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+
+      # Demo settings
+      AUTO_LOAD_SCENARIOS: true
+      ENABLE_PROBLEM_INJECTION: true
+    ports:
+      - "8000:8000"
+    depends_on:
+      - hapi-site-a
+      - hapi-site-b
+      - terminology-proxy
+    networks:
+      - workshop-network
+    volumes:
+      - ./demo-ui:/app
+      - ./workshop-scenarios:/app/scenarios:ro
+    labels:
+      - "workshop.component=demo-ui"
+      - "workshop.access=http://localhost:8000"
+
+  # Package installer - Loads MII PRO packages into both HAPI instances
+  # Runs once at startup
+  package-installer:
+    image: python:3.11-slim
+    container_name: workshop-package-installer
+    depends_on:
+      - hapi-site-a
+      - hapi-site-b
+    networks:
+      - workshop-network
+    volumes:
+      - ./workshop-scripts:/scripts
+    environment:
+      SITE_A_URL: http://hapi-site-a:8080/fhir
+      SITE_B_URL: http://hapi-site-b:8080/fhir
+    command: >
+      sh -c "
+        pip install -q requests &&
+        echo 'Waiting for HAPI servers to be ready...' &&
+        sleep 60 &&
+        echo 'Installing MII PRO package on Site A (v1.0 simulation)...' &&
+        python3 /scripts/install_packages.py --site-a &&
+        echo 'Installing MII PRO package on Site B (v2.0 simulation)...' &&
+        python3 /scripts/install_packages.py --site-b &&
+        echo 'Loading sample PROMIS questionnaires...' &&
+        python3 /scripts/load_sample_data.py &&
+        echo 'Package installation complete!' &&
+        exit 0
+      "
+    restart: "no"
+    labels:
+      - "workshop.component=installer"
+
+networks:
+  workshop-network:
+    name: workshop-network
+    driver: bridge
+
+volumes:
+  db_site_a_data:
+    name: workshop-db-site-a
+  db_site_b_data:
+    name: workshop-db-site-b
+  hapi_site_a_data:
+    name: workshop-hapi-site-a
+  hapi_site_b_data:
+    name: workshop-hapi-site-b
+  ontoserver_data:
+    name: workshop-ontoserver
+  terminology_cache:
+    name: workshop-terminology-cache

@@ -1,0 +1,43 @@
+# HAPI FHIR Configuration for Site B (Review Site)
+# PROMIS v2.0 (newer scoring algorithm - simulated version difference)
+
+hapi:
+  fhir:
+    # Server settings
+    fhir_version: R4
+
+    # Clinical Reasoning Module
+    cr:
+      enabled: true
+
+    # Implementation Guides - Same packages as Site A
+    # Note: Version difference will be simulated via different CQL libraries/data
+    implementationguides:
+      # SDC (Structured Data Capture) Implementation Guide
+      sdc:
+        name: hl7.fhir.uv.sdc
+        version: 3.0.0
+        installMode: STORE_AND_INSTALL
+        reloadExisting: false
+        fetchDependencies: false
+
+      # MII PRO package
+      mii_pros:
+        name: de.medizininformatikinitiative.kerndatensatz.pros
+        version: 2026.0.0-rc.1
+        installMode: STORE_AND_INSTALL
+        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/2026.0.0-rc.1
+        reloadExisting: false
+        fetchDependencies: false
+
+    # Validation - More strict on Site B
+    validation:
+      enabled: true
+      requests_enabled: true
+
+    # Subscription (disabled for workshop)
+    subscription:
+      enabled: false
+
+    # External terminology server
+    remote_terminology_server_url: http://terminology-proxy:3000/fhir
