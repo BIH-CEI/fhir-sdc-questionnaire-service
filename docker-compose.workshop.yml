@@ -6,11 +6,11 @@ version: '3.8'
 # - Site A (Port 8081): Collection site with PROMIS v1.0
 # - Site B (Port 8082): Review site with PROMIS v2.0
 # - Terminology Proxy (Port 3000): Enhanced ONTOSERVER wrapper
-# - Demo UI (Port 8000): Workshop scenario controller
+# - Demo UI (Port 8100): Workshop scenario controller
 #
 # Usage:
 #   docker compose -f docker-compose.workshop.yml up -d
-#   Access demo UI: http://localhost:8000
+#   Access demo UI: http://localhost:8100
 #   Access Site A: http://localhost:8081/fhir
 #   Access Site B: http://localhost:8082/fhir
 
@@ -247,13 +247,13 @@ services:
 
       # API settings
       API_HOST: 0.0.0.0
-      API_PORT: 8000
+      API_PORT: 8100
 
       # Demo settings
       AUTO_LOAD_SCENARIOS: true
       ENABLE_PROBLEM_INJECTION: true
     ports:
-      - "8000:8000"
+      - "8100:8100"
     depends_on:
       - hapi-site-a
       - hapi-site-b
@@ -265,7 +265,7 @@ services:
       - ./workshop-scenarios:/app/scenarios:ro
     labels:
       - "workshop.component=demo-ui"
-      - "workshop.access=http://localhost:8000"
+      - "workshop.access=http://localhost:8100"
 
   # Package installer - Loads MII PRO packages into both HAPI instances
   # Runs once at startup
