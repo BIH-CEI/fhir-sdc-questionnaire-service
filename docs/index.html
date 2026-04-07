@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FHIR SDC Questionnaire Service - Workshop</title>
+    <style>
+        :root {
+            --primary: #005eb8;
+            --primary-dark: #003d7a;
+            --secondary: #41b6e6;
+            --accent: #ed8b00;
+            --bg: #f8f9fa;
+            --text: #212529;
+            --card-bg: #ffffff;
+            --border: #dee2e6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 3rem 1rem;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        nav {
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        nav a:hover {
+            background: var(--bg);
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid var(--primary);
+        }
+
+        .card h3 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .card p {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .card a {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .card a:hover {
+            background: var(--primary-dark);
+        }
+
+        section {
+            margin-bottom: 3rem;
+        }
+
+        section h2 {
+            color: var(--primary);
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .highlight {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            border: 1px solid var(--border);
+        }
+
+        .highlight.warning {
+            border-left: 4px solid var(--accent);
+            background: #fff8e6;
+        }
+
+        code {
+            background: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--primary);
+            color: white;
+        }
+
+        tr:hover {
+            background: var(--bg);
+        }
+
+        footer {
+            background: var(--primary-dark);
+            color: white;
+            text-align: center;
+            padding: 2rem 1rem;
+            margin-top: 3rem;
+        }
+
+        footer a {
+            color: var(--secondary);
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            nav ul {
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>FHIR SDC Questionnaire Service</h1>
+        <p>Workshop for PROMIS &amp; PRO Interoperability</p>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#quickstart">Quick Start</a></li>
+            <li><a href="#services">Services</a></li>
+            <li><a href="workshop-tasks.html">Workshop Tasks</a></li>
+            <li><a href="https://github.com/nicktiberi/fhir-sdc-questionnaire-service" target="_blank">GitHub</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <section id="overview">
+            <h2>Overview</h2>
+            <p>This workshop environment demonstrates technical challenges and solutions for Patient-Reported Outcome Measures (PROMs) interoperability using FHIR SDC (Structured Data Capture).</p>
+
+            <div class="cards">
+                <div class="card">
+                    <h3>PROMIS Exchange</h3>
+                    <p>Demonstrate working FHIR questionnaire exchange between sites with different configurations.</p>
+                </div>
+                <div class="card">
+                    <h3>Version Conflicts</h3>
+                    <p>Explore scoring algorithm version mismatches and their impact on patient safety.</p>
+                </div>
+                <div class="card">
+                    <h3>Terminology Services</h3>
+                    <p>Enhanced LOINC terminology proxy with ordinal values and multilingual support.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="quickstart">
+            <h2>Quick Start</h2>
+            <div class="highlight">
+                <p><strong>Prerequisites:</strong> Docker and Docker Compose installed</p>
+            </div>
+
+            <pre><code># Clone repository
+git clone https://github.com/nicktiberi/fhir-sdc-questionnaire-service.git
+cd fhir-sdc-questionnaire-service
+
+# Start workshop environment
+docker compose -f docker-compose.workshop.yml up -d
+
+# Wait 2-3 minutes for services to initialize
+docker compose -f docker-compose.workshop.yml logs -f
+
+# Access Demo UI
+open http://localhost:8000</code></pre>
+
+            <div class="highlight warning">
+                <strong>Note:</strong> HAPI FHIR can take 2-3 minutes to fully initialize. Wait for the log message: <code>Started Application in X seconds</code>
+            </div>
+        </section>
+
+        <section id="services">
+            <h2>Services</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>URL</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Demo UI</td>
+                        <td><code>http://localhost:8000</code></td>
+                        <td>Interactive workshop scenarios</td>
+                    </tr>
+                    <tr>
+                        <td>Site A FHIR</td>
+                        <td><code>http://localhost:8081/fhir</code></td>
+                        <td>German hospital - data collection</td>
+                    </tr>
+                    <tr>
+                        <td>Site B FHIR</td>
+                        <td><code>http://localhost:8082/fhir</code></td>
+                        <td>Multi-site clinic - data review</td>
+                    </tr>
+                    <tr>
+                        <td>Terminology Proxy</td>
+                        <td><code>http://localhost:3000</code></td>
+                        <td>Enhanced LOINC terminology service</td>
+                    </tr>
+                    <tr>
+                        <td>Site A Swagger</td>
+                        <td><code>http://localhost:8081/fhir/swagger-ui/</code></td>
+                        <td>HAPI REST API documentation</td>
+                    </tr>
+                    <tr>
+                        <td>Demo API Docs</td>
+                        <td><code>http://localhost:8000/docs</code></td>
+                        <td>FastAPI Swagger documentation</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="scenarios">
+            <h2>Demo Scenarios</h2>
+            <div class="cards">
+                <div class="card">
+                    <h3>1. Basic PROMIS Exchange</h3>
+                    <p>Working FHIR exchange with questionnaire retrieval and ValueSet expansion.</p>
+                    <a href="workshop-tasks.html#scenario1">View Details</a>
+                </div>
+                <div class="card">
+                    <h3>2. Version Mismatch</h3>
+                    <p>Scoring algorithm version conflict between PROMIS v1.0 and v2.0.</p>
+                    <a href="workshop-tasks.html#scenario2">View Details</a>
+                </div>
+                <div class="card">
+                    <h3>3. Missing Translation</h3>
+                    <p>Incomplete multilingual support and fallback mechanisms.</p>
+                    <a href="workshop-tasks.html#scenario3">View Details</a>
+                </div>
+                <div class="card">
+                    <h3>4. LOINC Panel API</h3>
+                    <p>Missing LOINC panel structure API and enhanced wrapper solution.</p>
+                    <a href="workshop-tasks.html#scenario4">View Details</a>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Sample Questionnaires</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Questionnaire</th>
+                        <th>LOINC Code</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>PROMIS Pain Interference 6a</td>
+                        <td><code>62629-8</code></td>
+                        <td>6-item pain interference assessment</td>
+                    </tr>
+                    <tr>
+                        <td>PHQ-9</td>
+                        <td><code>44249-1</code></td>
+                        <td>9-item depression screening</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <footer>
+        <p>FHIR SDC Questionnaire Service Workshop</p>
+        <p><a href="https://github.com/nicktiberi/fhir-sdc-questionnaire-service">GitHub Repository</a></p>
+    </footer>
+</body>
+</html>

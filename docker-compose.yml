@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - fhir-network
     healthcheck:
@@ -66,7 +66,7 @@ services:
       # Note: Environment var approach would be: hapi.fhir.cql_enabled: true (deprecated)
       # Using application.yaml for better configuration management
     ports:
-      - "8080:8080"
+      - "8095:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -78,10 +78,10 @@ services:
       - hapi_data:/data/hapi
       - ./hapi-config/application.yaml:/data/hapi/application.yaml:ro
 
-  # ISiK Runtime Installer - Runs once after HAPI startup
-  isik-installer:
+  # MII PRO Package Installer - Runs once after HAPI startup
+  mii-pro-installer:
     image: python:3.11-slim
-    container_name: isik-installer
+    container_name: mii-pro-installer
     depends_on:
       - hapi-fhir
     networks:
@@ -92,8 +92,8 @@ services:
       HAPI_BASE_URL: http://hapi-fhir:8080/fhir
     command: >
       sh -c "pip install -q requests &&
-             python3 /scripts/install-isik-runtime.py &&
-             echo 'ISiK installation complete. Container will exit.' &&
+             python3 /scripts/install-mii-pro.py &&
+             echo 'MII PRO installation complete. Container will exit.' &&
              exit 0"
     restart: "no"
 
@@ -106,7 +106,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       - hapi-fhir
     networks:
