@@ -58,3 +58,7 @@ yarn-error.log*
 *.pem
 *.key
 credentials.json
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+.beads-credential-key
