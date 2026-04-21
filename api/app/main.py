@@ -64,8 +64,9 @@ async def root():
 
 
 # Include routers
-from app.routers import questionnaires
+from app.routers import questionnaires, proctcae
 app.include_router(questionnaires.router)
+app.include_router(proctcae.router)
 
 
 if __name__ == "__main__":
