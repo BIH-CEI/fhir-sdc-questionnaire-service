@@ -1,8 +1,6 @@
 # Project Overview
 
-This repository contains **multiple loosely-coupled components** for FHIR SDC (Structured Data Capture) questionnaire handling. It mixes a reference implementation, workshop demo infrastructure, and extensive planning documentation.
-
-**Warning:** This feels like multiple repositories merged into one. Consider splitting if scope grows.
+This repository contains components for FHIR SDC (Structured Data Capture) questionnaire handling: a reference implementation API on top of HAPI FHIR, plus planning documentation.
 
 ---
 
@@ -19,21 +17,7 @@ FastAPI service providing SDC operations on top of HAPI FHIR.
 | `api/tests/` | Pytest test suite (21+ SDC compliance tests) |
 | `api/Dockerfile` | Container build |
 
-### 2. Workshop Multi-Site Demo (`workshop-*`, `demo-ui/`)
-Demonstrates PROMIS questionnaire exchange between two hospital sites.
-
-| Path | Description |
-|------|-------------|
-| `docker-compose.workshop.yml` | Two HAPI instances + terminology + demo UI |
-| `workshop-config/` | HAPI application.yaml for Site A and Site B |
-| `workshop-scripts/` | Package installation scripts |
-| `workshop-scenarios/` | Demo scenario descriptions |
-| `demo-ui/` | Workshop scenario controller UI |
-
-### 3. Terminology Proxy (`terminology-proxy/`)
-Wrapper around ONTOSERVER providing LOINC-specific APIs.
-
-### 4. Main Docker Setup
+### 2. Main Docker Setup
 | File | Description |
 |------|-------------|
 | `docker-compose.yml` | Main dev environment (single HAPI + API) |
@@ -42,7 +26,7 @@ Wrapper around ONTOSERVER providing LOINC-specific APIs.
 | `hapi-config/` | HAPI configuration |
 | `hapi-scripts/` | IG installation scripts |
 
-### 5. Utility Scripts (`scripts/`)
+### 3. Utility Scripts (`scripts/`)
 | Script | Description |
 |--------|-------------|
 | `install_mii_package.py` | Install MII PRO IG |
@@ -93,13 +77,6 @@ Wrapper around ONTOSERVER providing LOINC-specific APIs.
 | `VERSION_QUICK_REFERENCE.md` | Quick commands for version management |
 | `VERSION_IN_METADATA_EXPLAINED.md` | Explains CapabilityStatement version fields |
 
-### Workshop
-| File | Description |
-|------|-------------|
-| `WORKSHOP_README.md` | Workshop setup instructions |
-| `WORKSHOP_ARCHITECTURE.md` | Workshop system design |
-| `workshop-scenarios/PHQ9_DEMO.md` | PHQ-9 demo scenario |
-
 ### Strategic
 | File | Description |
 |------|-------------|
@@ -126,14 +103,6 @@ Wrapper around ONTOSERVER providing LOINC-specific APIs.
 docker compose up -d
 # API: http://localhost:8000
 # HAPI: http://localhost:8080/fhir
-```
-
-**Workshop (two sites):**
-```bash
-docker compose -f docker-compose.workshop.yml up -d
-# Site A: http://localhost:8081/fhir
-# Site B: http://localhost:8082/fhir
-# Demo UI: http://localhost:8000
 ```
 
 **Run tests:**
