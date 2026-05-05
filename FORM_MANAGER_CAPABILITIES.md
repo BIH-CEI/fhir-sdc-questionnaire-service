@@ -18,7 +18,7 @@ Your HAPI FHIR server has **robust terminology capabilities** despite not fetchi
 #### What You Have
 - **Core FHIR R4 terminologies** - Built into the HAPI FHIR base
 - **SDC-specific terminologies** - From hl7.fhir.uv.sdc#3.0.0
-- **MII PROS terminologies** - From de.medizininformatikinitiative.kerndatensatz.pros#2026.0.0-rc.1:
+- **MII PROS terminologies** - From de.medizininformatikinitiative.kerndatensatz.pros#2026.2.0:
   - 5 CodeSystems (PRO-specific)
   - 9 ValueSets (PRO-specific)
 

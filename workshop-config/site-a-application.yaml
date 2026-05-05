@@ -23,9 +23,9 @@ hapi:
       # MII PRO package
       mii_pros:
         name: de.medizininformatikinitiative.kerndatensatz.pros
-        version: 2026.0.0-rc.1
+        version: 2026.2.0
         installMode: STORE_AND_INSTALL
-        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/2026.0.0-rc.1
+        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/2026.2.0
         reloadExisting: false
         fetchDependencies: false
 

@@ -81,7 +81,7 @@ This architecture demonstrates a realistic multi-site Patient-Reported Outcome M
 
 **Configuration:**
 - **Port:** 8081
-- **Package:** `de.medizininformatikinitiative.kerndatensatz.pros:2026.0.0-rc.1`
+- **Package:** `de.medizininformatikinitiative.kerndatensatz.pros:2026.2.0`
 - **PROMIS Version:** 1.0 (older scoring algorithm)
 - **Language:** German (de-DE) default
 - **CQL Engine:** Enabled (local scoring)
@@ -104,7 +104,7 @@ This architecture demonstrates a realistic multi-site Patient-Reported Outcome M
 
 **Configuration:**
 - **Port:** 8082
-- **Package:** `de.medizininformatikinitiative.kerndatensatz.pros:2026.0.0-rc.1`
+- **Package:** `de.medizininformatikinitiative.kerndatensatz.pros:2026.2.0`
 - **PROMIS Version:** 2.0 (newer scoring algorithm - **DIFFERENT**)
 - **Languages:** German (de-DE), English (en-US), Turkish (tr-TR pending)
 - **Validation:** Enabled

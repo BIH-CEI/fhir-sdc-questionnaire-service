@@ -22,7 +22,7 @@ PACKAGES = [
     {"name": "hl7.fhir.uv.sdc",                               "version": "3.0.0"},
     {"name": "de.medizininformatikinitiative.kerndatensatz.meta", "version": "2026.0.0"},
     # MII PRO
-    {"name": "de.medizininformatikinitiative.kerndatensatz.pros", "version": "2026.0.1"},
+    {"name": "de.medizininformatikinitiative.kerndatensatz.pros", "version": "2026.2.0"},
 ]
 
 

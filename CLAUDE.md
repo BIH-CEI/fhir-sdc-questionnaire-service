@@ -147,6 +147,6 @@ cd api && pytest tests/ -v
 
 - **HAPI FHIR** as primary server (pinned to v8.4.0)
 - **SDC 3.0.0** Implementation Guide
-- **MII PRO 2026.0.0-rc.1** for German patient-reported outcomes
+- **MII PRO 2026.2.0** for German patient-reported outcomes
 - **FastAPI** for custom operations not native to HAPI
 - **$assemble** intentionally not implemented (marked as MAY/optional)
