@@ -24,17 +24,21 @@ hapi:
 
       # SDC (Structured Data Capture) Implementation Guide
       # Provides Questionnaire profiles and operations for form management
+      # Loaded from a locally-patched tarball: HL7 ships SDC 3.0.0 with status=draft
+      # on all SD/CS/VS, which HAPI's PackageInstallerSvc rejects on auto-install.
+      # The build step in Dockerfile.form-manager flips status to "active" before bundling.
       sdc:
         name: hl7.fhir.uv.sdc
         version: 3.0.0
         installMode: STORE_AND_INSTALL
+        packageUrl: file:///data/hapi/local-packages/hl7.fhir.uv.sdc-3.0.0.tgz
         reloadExisting: false
         fetchDependencies: false
       mii_pros:
         name: de.medizininformatikinitiative.kerndatensatz.pros
-        version: 2026.2.0
+        version: 2026.3.0
         installMode: STORE_AND_INSTALL
-        packageUrl: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/2026.2.0
+        packageUrl: file:///data/hapi/local-packages/de.medizininformatikinitiative.kerndatensatz.pros-2026.3.0.tgz
         reloadExisting: false
         fetchDependencies: false
 

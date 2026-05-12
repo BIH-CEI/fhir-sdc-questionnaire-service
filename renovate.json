@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Berlin",
+  "labels": ["renovate", "mii-pro"],
+  "customDatasources": {
+    "simplifier-fhir": {
+      "defaultRegistryUrlTemplate": "https://packages.simplifier.net/{{packageName}}",
+      "format": "json",
+      "transformTemplates": [
+        "{\"releases\": [{\"version\": $['dist-tags'].latest}]}"
+      ]
+    }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "MII PRO version pin in Dockerfile.form-manager",
+      "fileMatch": ["^Dockerfile\\.form-manager$"],
+      "matchStrings": [
+        "ARG MII_PRO_VERSION=(?<currentValue>.+?)\\s"
+      ],
+      "datasourceTemplate": "custom.simplifier-fhir",
+      "depNameTemplate": "de.medizininformatikinitiative.kerndatensatz.pros",
+      "versioningTemplate": "loose"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["de.medizininformatikinitiative.kerndatensatz.pros"],
+      "groupName": "MII PRO IG",
+      "commitMessageTopic": "MII PRO",
+      "commitMessageAction": "bump",
+      "prBodyNotes": [
+        "After this PR lands on the renovate branch, the `auto-pin-pro-sha` workflow recomputes and commits the matching `MII_PRO_SHA256`. CI then runs the full build + smoke test."
+      ]
+    },
+    {
+      "description": "SDC bumps require manual review — patch table in Dockerfile.form-manager may need extension",
+      "matchPackageNames": ["hl7.fhir.uv.sdc"],
+      "enabled": false
+    }
+  ]
+}

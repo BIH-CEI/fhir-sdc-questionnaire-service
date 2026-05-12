@@ -1,0 +1,57 @@
+name: Auto-pin MII PRO SHA on Renovate PRs
+
+on:
+  pull_request:
+    branches: [master, main]
+    paths:
+      - Dockerfile.form-manager
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pin-sha:
+    if: startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Recompute MII PRO SHA256 from Dockerfile version
+        id: pin
+        run: |
+          VERSION=$(grep -E '^ARG MII_PRO_VERSION=' Dockerfile.form-manager | head -1 | cut -d= -f2)
+          OLD_SHA=$(grep -E '^ARG MII_PRO_SHA256=' Dockerfile.form-manager | head -1 | cut -d= -f2)
+          echo "Pinned version: $VERSION"
+          echo "Current SHA:    $OLD_SHA"
+          curl -sfL "https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${VERSION}" -o /tmp/pros.tgz
+          NEW_SHA=$(sha256sum /tmp/pros.tgz | awk '{print $1}')
+          echo "Computed SHA:   $NEW_SHA"
+          if [ "$NEW_SHA" = "$OLD_SHA" ]; then
+            echo "SHA already up-to-date, nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sed -i -E "s|^ARG MII_PRO_SHA256=.*|ARG MII_PRO_SHA256=${NEW_SHA}|" Dockerfile.form-manager
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "new_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Commit updated SHA to PR branch
+        if: steps.pin.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Dockerfile.form-manager
+          git commit -m "chore(deps): pin MII PRO ${{ steps.pin.outputs.version }} SHA256
+
+          Auto-computed SHA256 for the tarball matching the version bump
+          opened by Renovate.
+
+          Tarball: https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${{ steps.pin.outputs.version }}
+          SHA256:  ${{ steps.pin.outputs.new_sha }}"
+          git push

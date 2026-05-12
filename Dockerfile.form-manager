@@ -1,0 +1,76 @@
+## syntax=docker/dockerfile:1.7
+# HAPI FHIR base image — pinned by digest for reproducibility.
+# Tag at time of pin: hapiproject/hapi:latest (= v8.4.0, built 2025-11-04).
+ARG HAPI_BASE=hapiproject/hapi@sha256:429136d44bb60456f7ca91f906cfcf1a43f3c17ff296edd8e9070af7876b309a
+ARG MII_PRO_VERSION=2026.3.0
+ARG MII_PRO_SHA256=02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701
+ARG SDC_VERSION=3.0.0
+ARG SDC_SHA256=be5c3f0a7f82e072b40739e05fb68f3e58e44c9bd040cd901b1b55c62f23dca2
+
+FROM debian:bookworm-slim AS fetch
+ARG MII_PRO_VERSION
+ARG MII_PRO_SHA256
+ARG SDC_VERSION
+ARG SDC_SHA256
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /pkgs
+
+# MII PRO — verified upstream tarball, used as-is
+RUN curl -sfL "https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${MII_PRO_VERSION}" \
+        -o "/pkgs/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz" \
+ && echo "${MII_PRO_SHA256}  /pkgs/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz" \
+        | sha256sum -c -
+
+# SDC — fetch upstream, verify, then patch resource-level status: "draft" → "active"
+# so HAPI's PackageInstallerSvc accepts SD/CS/VS during STORE_AND_INSTALL.
+# HL7 ships SDC 3.0.0 with status=draft on all artefacts (SDC has been "trial-use"
+# indefinitely); HAPI rejects draft on auto-install. The patch only touches the
+# top-level `status` field, never nested resources.
+RUN curl -sfL "https://packages.simplifier.net/hl7.fhir.uv.sdc/${SDC_VERSION}" \
+        -o "/pkgs/sdc-upstream.tgz" \
+ && echo "${SDC_SHA256}  /pkgs/sdc-upstream.tgz" | sha256sum -c - \
+ && mkdir -p /tmp/sdc && tar xzf /pkgs/sdc-upstream.tgz -C /tmp/sdc
+
+RUN python3 <<'PY'
+import json, glob
+PATCH_TYPES = {
+    'StructureDefinition', 'CodeSystem', 'ValueSet',
+    'SearchParameter', 'OperationDefinition', 'CapabilityStatement',
+    'StructureMap', 'ImplementationGuide',
+}
+patched = 0
+for fp in glob.glob('/tmp/sdc/package/*.json'):
+    try:
+        with open(fp) as f: d = json.load(f)
+    except Exception:
+        continue
+    if d.get('resourceType') in PATCH_TYPES and d.get('status') == 'draft':
+        d['status'] = 'active'
+        with open(fp, 'w') as f: json.dump(d, f)
+        patched += 1
+print(f'SDC: patched {patched} draft→active resources')
+PY
+
+RUN cd /tmp/sdc && tar czf "/pkgs/hl7.fhir.uv.sdc-${SDC_VERSION}.tgz" package/ \
+ && rm /pkgs/sdc-upstream.tgz
+
+FROM ${HAPI_BASE}
+ARG MII_PRO_VERSION
+ARG SDC_VERSION
+COPY --from=fetch /pkgs/ /data/hapi/local-packages/
+COPY hapi-config/application.yaml /data/hapi/application.yaml
+
+ENV SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/hapi/ \
+    HAPI_FHIR_CR_ENABLED=true
+
+LABEL org.opencontainers.image.title="FHIR SDC Form Manager (HAPI + SDC + MII PRO)" \
+      org.opencontainers.image.vendor="Berlin Institute of Health" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      de.mii.kerndatensatz-pro.version="${MII_PRO_VERSION}" \
+      de.mii.kerndatensatz-pro.source="https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${MII_PRO_VERSION}" \
+      org.hl7.fhir.uv.sdc.version="${SDC_VERSION}" \
+      org.hl7.fhir.uv.sdc.source="https://packages.simplifier.net/hl7.fhir.uv.sdc/${SDC_VERSION}" \
+      org.hl7.fhir.uv.sdc.modifications="status:draft→active on SD/CS/VS for HAPI auto-install"

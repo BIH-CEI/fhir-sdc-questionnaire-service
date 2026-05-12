@@ -1,9 +1,15 @@
 version: '3.8'
 
 services:
-  # Test HAPI FHIR Server
+  # Test FHIR SDC Form Manager (same image as prod, with MII PRO baked in)
   hapi-fhir-test:
-    image: hapiproject/hapi:latest  # Currently 8.4.0 (2025-10-26)
+    image: ${FORM_MANAGER_IMAGE:-fhir-sdc-form-manager:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.form-manager
+      args:
+        MII_PRO_VERSION: ${MII_PRO_VERSION:-2026.3.0}
+        MII_PRO_SHA256: ${MII_PRO_SHA256:-02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701}
     container_name: hapi-fhir-test
     ports:
       - "8081:8080"
@@ -38,7 +44,7 @@ services:
 
     # Healthcheck disabled - HAPI container doesn't have curl/wget/ls
     # Tests will wait for HAPI to respond instead
-    # Note: MII PRO IG is NOT loaded in test instance (keep tests fast and isolated)
+    # MII PRO 2026.3.0 IS loaded — image is the publishable artifact, tested as-shipped
 
   # FastAPI application (test configuration)
   fastapi-test:

@@ -19,9 +19,15 @@ services:
       timeout: 5s
       retries: 5
 
-  # HAPI FHIR Server
+  # FHIR SDC Form Manager (HAPI + SDC + MII PRO IG, baked into the image)
   hapi-fhir:
-    image: hapiproject/hapi:latest
+    image: ${FORM_MANAGER_IMAGE:-fhir-sdc-form-manager:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.form-manager
+      args:
+        MII_PRO_VERSION: ${MII_PRO_VERSION:-2026.3.0}
+        MII_PRO_SHA256: ${MII_PRO_SHA256:-02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701}
     container_name: hapi-fhir-server
     env_file:
       - .env
@@ -74,9 +80,8 @@ services:
       - fhir-network
     # Healthcheck disabled - HAPI container doesn't have curl/wget
     # Services will wait via sleep delay instead
-    volumes:
-      - hapi_data:/data/hapi
-      - ./hapi-config/application.yaml:/data/hapi/application.yaml:ro
+    # No bind-mounts: application.yaml + MII PRO tarball are baked into the image
+    # via Dockerfile.form-manager. Lucene index is rebuilt on each container start.
 
   # MII PRO Package Installer - Runs once after HAPI startup
   mii-pro-installer:
@@ -144,4 +149,3 @@ networks:
 
 volumes:
   postgres_data:
-  hapi_data:
