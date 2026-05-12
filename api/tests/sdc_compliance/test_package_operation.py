@@ -708,35 +708,38 @@ class TestDependencyResolution:
         cs_urls = [cs.get("url") for cs in codesystems]
         assert "http://example.org/CodeSystem/deep-nested" in cs_urls
 
-    @pytest.mark.xfail(
-        reason="HAPI FHIR does not natively support $package operation - our FastAPI layer implements it",
-        strict=True
-    )
-    async def test_hapi_does_not_support_package_natively(self, hapi_client, load_test_fixtures):
+    async def test_hapi_native_package_is_partial(self, hapi_client, load_test_fixtures):
         """
-        Test: HAPI FHIR does not natively support $package operation
+        Test: HAPI FHIR's native $package returns a Bundle but is not SDC-conformant.
 
         Test ID: TEST-PKG-HAPI-001
-        Purpose: Document that $package is a custom implementation
+        Purpose: Document the gap between HAPI's CR-provided $package and the
+        SDC $package operation our FastAPI layer implements.
 
-        This test explicitly shows that HAPI FHIR (as of v6.x) does NOT
-        natively support the SDC $package operation. Our FastAPI application
-        provides this functionality by implementing PackageService.
+        As of HAPI 8.4+, the Clinical Reasoning module ships a
+        QuestionnairePackageProvider that responds to $package. However, it:
+          - returns Bundle.type = "transaction"   (SDC requires "collection")
+          - resolves StructureDefinitions from item.definition
+          - DOES NOT resolve answerValueSet → ValueSet
+          - DOES NOT resolve referenced CodeSystems
+          - DOES NOT resolve cqf-library extensions → Library
+          - DOES NOT resolve itemExtractionContext → Observation profiles
 
-        Expected behavior: HAPI returns 404 or OperationOutcome indicating
-        the operation is not supported.
-
-        This test is marked with @pytest.mark.xfail(strict=True) which means:
-        - If HAPI returns an error (404/400/501), the test PASSES (expected failure)
-        - If HAPI somehow supports $package, the test FAILS (unexpected pass)
+        Our FastAPI PackageService fills those gaps, so this test documents
+        WHY the FastAPI layer remains necessary even though HAPI now answers
+        the operation.
         """
         phq2_id = load_test_fixtures["phq2_questionnaire_id"]
-
-        # Try to call $package directly on HAPI (bypassing our FastAPI layer)
-        # This should fail because HAPI doesn't implement SDC $package
         response = await hapi_client.get(f"/Questionnaire/{phq2_id}/$package")
 
-        # This assertion will fail (HAPI doesn't support it)
-        # But because of xfail, the test suite will mark this as "XFAIL" (expected failure)
         assert response.status_code == 200, \
-            "HAPI should not support $package - this assertion is expected to fail"
+            "HAPI 8.4+ should respond to $package via the CR module"
+
+        bundle = response.json()
+        assert bundle["resourceType"] == "Bundle"
+        # HAPI native is NOT SDC-conformant — expect transaction bundle, not collection.
+        # If this assertion ever flips, HAPI has become SDC-conformant and the
+        # FastAPI layer may be reducible to a thin proxy.
+        assert bundle.get("type") == "transaction", \
+            "HAPI native still returns transaction; SDC requires collection — " \
+            "FastAPI layer remains responsible for SDC conformance."
