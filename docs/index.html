@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FHIR SDC Form Manager</title>
+    <meta name="description" content="A containerized FHIR Form Manager (HAPI + SDC IG + MII PRO IG) with end-to-end validation infrastructure.">
+    <style>
+        :root {
+            --fg: #1a1a1a;
+            --fg-muted: #5a6470;
+            --bg: #fafbfc;
+            --card: #ffffff;
+            --border: #e1e4e8;
+            --accent: #005eb8;
+            --accent-dark: #003d7a;
+            --code-bg: #f3f4f6;
+            --term-bg: #0d1117;
+            --term-fg: #e6edf3;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--fg);
+            background: var(--bg);
+        }
+
+        header {
+            border-bottom: 1px solid var(--border);
+            background: var(--card);
+            padding: 4rem 1.5rem 3rem;
+        }
+
+        .container { max-width: 920px; margin: 0 auto; padding: 0 1.5rem; }
+
+        header .container { padding: 0 1.5rem; }
+
+        header .eyebrow {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 0.75rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 1rem;
+            line-height: 1.15;
+        }
+
+        header .lede {
+            font-size: 1.2rem;
+            color: var(--fg-muted);
+            max-width: 640px;
+        }
+
+        main { padding: 3rem 0; }
+
+        section { margin-bottom: 3.5rem; }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.5rem;
+        }
+
+        p { margin-bottom: 1rem; color: var(--fg); }
+
+        p.muted { color: var(--fg-muted); }
+
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        code {
+            font-family: "SF Mono", Menlo, Consolas, monospace;
+            font-size: 0.92em;
+            background: var(--code-bg);
+            padding: 0.1em 0.35em;
+            border-radius: 3px;
+        }
+
+        pre {
+            background: var(--term-bg);
+            color: var(--term-fg);
+            padding: 1rem 1.2rem;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5rem 0 1.5rem;
+            font-size: 0.92rem;
+            line-height: 1.55;
+        }
+
+        pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+            font-size: inherit;
+        }
+
+        .pull {
+            border: 1px solid var(--border);
+            background: var(--card);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .pull h3 { margin-top: 0; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.5rem 0 1.5rem;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            background: var(--code-bg);
+            color: var(--fg);
+        }
+
+        td code { background: transparent; padding: 0; font-size: 0.9em; }
+
+        ul { margin: 0 0 1rem 1.25rem; }
+        li { margin-bottom: 0.4rem; }
+
+        .pill {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.15rem 0.55rem;
+            border-radius: 999px;
+            background: var(--code-bg);
+            color: var(--fg-muted);
+            vertical-align: middle;
+            margin-left: 0.4rem;
+        }
+
+        .pill.ok { background: #def7e8; color: #166534; }
+        .pill.no { background: #fde2e2; color: #991b1b; }
+        .pill.partial { background: #fef3c7; color: #92400e; }
+
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 2rem 0 3rem;
+            margin-top: 3rem;
+            color: var(--fg-muted);
+            font-size: 0.9rem;
+        }
+
+        footer a { color: var(--fg-muted); text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            header { padding: 2.5rem 1rem 2rem; }
+            header h1 { font-size: 1.85rem; }
+            header .lede { font-size: 1.05rem; }
+            main { padding: 2rem 0; }
+            section { margin-bottom: 2.5rem; }
+            pre { font-size: 0.85rem; padding: 0.85rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="eyebrow">BIH-CEI · MII PRO Module</div>
+            <h1>FHIR SDC Form Manager</h1>
+            <p class="lede">A containerized FHIR Form Manager — HAPI FHIR with the SDC IG and MII PRO IG baked in — plus the validation infrastructure that proves it conforms.</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <section id="what">
+            <h2>What this is</h2>
+            <p>Two things, both shipped as code:</p>
+            <ol style="margin-left: 1.5rem;">
+                <li style="margin-bottom: 0.6rem;"><strong>A container image</strong> — HAPI FHIR with SDC 3.0.0 and the MII PRO IG already loaded at build time. No first-boot IG download, no terminology bootstrap, no flaky cold start.</li>
+                <li><strong>Validation infrastructure</strong> — CI smoke tests, SDC compliance tests, integration tests, FHIR Validator integration. Every published image has been booted and asserted against the SDC Form Manager capability statement before the tag was pushed.</li>
+            </ol>
+            <p class="muted" style="margin-top: 1rem;">This is not a workshop or a demo deployment. Those experiments lived here previously and have been removed.</p>
+        </section>
+
+        <section id="run">
+            <h2>Run it</h2>
+            <div class="pull">
+                <h3>Pull and start</h3>
+                <pre><code>docker pull ghcr.io/BIH-CEI/fhir-sdc-form-manager:latest
+docker run -p 8080:8080 ghcr.io/BIH-CEI/fhir-sdc-form-manager:latest
+
+# FHIR endpoint:
+curl http://localhost:8080/fhir/metadata</code></pre>
+                <p class="muted" style="margin-bottom: 0;">First-boot reachable in ~60–90s on amd64. No external dependencies — Postgres is optional and only needed for persistence.</p>
+            </div>
+        </section>
+
+        <section id="bundled">
+            <h2>What's bundled</h2>
+            <table>
+                <thead>
+                    <tr><th>Component</th><th>Version</th><th>Source</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>HAPI FHIR</td><td><code>8.4.0</code> <span class="pill">pinned by digest</span></td><td><code>hapiproject/hapi</code></td></tr>
+                    <tr><td>SDC IG</td><td><code>3.0.0</code></td><td><code>hl7.fhir.uv.sdc</code></td></tr>
+                    <tr><td>MII PRO IG</td><td><code>2026.3.0</code></td><td><code>de.medizininformatikinitiative.kerndatensatz.pros</code></td></tr>
+                </tbody>
+            </table>
+            <p class="muted">Upstream tarballs are SHA-256-verified during the build. Renovate keeps the MII PRO pin fresh.</p>
+        </section>
+
+        <section id="tags">
+            <h2>Image tags</h2>
+            <p>Published on every push to <code>master</code>, multi-arch (<code>linux/amd64</code> + <code>linux/arm64</code>):</p>
+            <table>
+                <thead><tr><th>Tag</th><th>Meaning</th></tr></thead>
+                <tbody>
+                    <tr><td><code>latest</code></td><td>Tip of <code>master</code></td></tr>
+                    <tr><td><code>mii-pro-&lt;version&gt;</code></td><td>Pinned to a specific MII PRO release (currently <code>mii-pro-2026.3.0</code>)</td></tr>
+                    <tr><td><code>sha-&lt;short&gt;</code></td><td>Reproducible pointer to a git commit</td></tr>
+                    <tr><td><code>v*</code></td><td>Release tags</td></tr>
+                </tbody>
+            </table>
+            <p><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/pkgs/container/fhir-sdc-form-manager">Browse all tags on GHCR →</a></p>
+        </section>
+
+        <section id="validation">
+            <h2>Validation infrastructure</h2>
+            <p>Living in <code>api/tests/</code> and <code>.github/workflows/build-and-publish.yml</code>:</p>
+            <ul>
+                <li><strong>CI smoke test</strong> — every PR boots the freshly built image, hits <code>/fhir/metadata</code>, and asserts at least 20 MII PRO <code>StructureDefinition</code>s are loaded. If the image won't boot or the IG didn't install, the build fails.</li>
+                <li><strong>SDC compliance tests</strong> (<code>api/tests/sdc_compliance/</code>) — assertions against the SDC Form Manager CapabilityStatement: metadata, OperationOutcome shapes, <code>$package</code>.</li>
+                <li><strong>Integration tests</strong> (<code>api/tests/integration/</code>) — Questionnaire CRUD, calculated-expression <code>$extract</code>, PRO-CTCAE scoring round-trip.</li>
+                <li><strong>FHIR Validator integration</strong> — official HL7 validator alongside the pytest suite (see <code>FHIR_VALIDATOR_INTEGRATION.md</code>).</li>
+                <li><strong>Coverage map</strong> — <code>TEST_REQUIREMENTS_MAPPING.md</code> tracks which SDC Form Manager requirements are covered by which tests.</li>
+            </ul>
+        </section>
+
+        <section id="capabilities">
+            <h2>SDC capabilities</h2>
+            <p>Implements the <a href="https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html">SDC Form Manager CapabilityStatement</a>:</p>
+            <table>
+                <thead><tr><th>Operation</th><th>Status</th><th>Implementation</th></tr></thead>
+                <tbody>
+                    <tr><td><code>$populate</code></td><td><span class="pill ok">Supported</span></td><td>HAPI Clinical Reasoning</td></tr>
+                    <tr><td><code>$extract</code></td><td><span class="pill ok">Supported</span></td><td>HAPI Clinical Reasoning</td></tr>
+                    <tr><td><code>$package</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar (HAPI native is partial)</td></tr>
+                    <tr><td><code>$localize</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar</td></tr>
+                    <tr><td><code>$assemble</code></td><td><span class="pill no">Not implemented</span></td><td>Optional in spec — see <code>ASSEMBLE_OPERATION_SUMMARY.md</code></td></tr>
+                </tbody>
+            </table>
+            <p>SHALL resources — <code>Questionnaire</code>, <code>ValueSet</code> (+ <code>$expand</code>, <code>$validate-code</code>), <code>CodeSystem</code> (+ <code>$lookup</code>), <code>Library</code> — all CRUD via HAPI.</p>
+        </section>
+
+        <section id="more">
+            <h2>Learn more</h2>
+            <ul>
+                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service">Source on GitHub</a> — README, architecture docs, requirements map</li>
+                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/pkgs/container/fhir-sdc-form-manager">Container image on GHCR</a></li>
+                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/blob/master/FUTURE_IDEAS.md">Future ideas</a> — syndication, mTLS distribution</li>
+                <li><a href="https://build.fhir.org/ig/HL7/sdc/">FHIR SDC specification</a></li>
+                <li><a href="https://simplifier.net/medizininformatikinitiative-modulpro">MII Kerndatensatz PRO</a></li>
+            </ul>
+        </section>
+
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>BIH Center for Digital Health · Maintained as part of the MII PRO Module work.</p>
+            <p style="margin-top: 0.4rem;"><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service">github.com/BIH-CEI/fhir-sdc-questionnaire-service</a></p>
+        </div>
+    </footer>
+
+</body>
+</html>
