@@ -5,8 +5,7 @@ pytest-cov==4.1.0
 pytest-mock==3.12.0
 pytest-timeout==2.2.0
 
-# HTTP testing
-httpx==0.25.2
+# HTTP testing — httpx pinned in requirements.txt (0.26.0); don't re-pin here
 
 # Test data factories
 faker==20.1.0
