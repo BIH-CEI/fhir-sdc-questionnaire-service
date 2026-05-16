@@ -2,18 +2,23 @@
 
 This document tracks known limitations, expected failures, and server-specific behaviors in the SDC Form Manager test suite.
 
-## PRO Library 0.1.1 — CQL execution gap
+## PRO Library 0.1.2 — CQL execution working end-to-end ✓
 
-The PRO Library 0.1.1 ships a CQL scoring `Library` (`phq-9-scoring`) plus a `TestScript` that exercises `Library/$evaluate` for ten boundary/extreme PHQ-9 response fixtures (raw=0, 4, 5, 9, 10, 14, 15, 19, 20, 27 → expected TotalScore + Severity + PROMIS Depression T-Score). The CQL itself is **independently verified** — `cqframework/cql-translation-service` Docker image compiles it to ELM with 0 errors, 0 warnings (signatures=Overloads). The pre-compiled ELM JSON is shipped in `Library.content` alongside the raw CQL.
+**0.1.2 closes the runtime gap that 0.1.1 documented.** All 10 boundary fixtures (raw=0, 4, 5, 9, 10, 14, 15, 19, 20, 27) now return the correct PHQ9TotalScore + PHQ9Severity + PROMISDepressionTScore via `Library/$evaluate?subject=Patient/X` against HAPI CR.
 
-HAPI CR loads the Library at boot and the CQL engine kicks in on `Library/$evaluate` — but as of the version pinned in `Dockerfile.form-manager`, **the QuestionnaireResponse passed as a library parameter does not reach the CQL engine.** All three parameter-passing patterns tested (`resource`, `valueReference`, separate `data` Bundle) return `data-absent: unknown` for the scoring expressions. `QuestionnaireResponse/$extract` throws `NullPointerException: theResourceName must not be blank`.
+Two bugs fixed:
 
-This is a HAPI CR integration issue (not a CQL/spec issue). Two candidate paths for 0.1.2:
+1. **Wrong flow** — the Library was parameterised for direct testing (Flow B: `parameter "Response" QuestionnaireResponse` + Parameters body). HAPI CR does not propagate non-Patient library parameters through `$evaluate`. Switched to SDC Flow A: `context Patient` + `[QuestionnaireResponse]` retrieve from server data. HAPI CR honours `?subject=Patient/X` natively and the retrieve resolves.
 
-1. **Redesign the Library for SDC flow** — drop the `parameter "Response" QuestionnaireResponse` and use `context Patient` + `[QuestionnaireResponse]` retrieve. The Library then matches the SDC `$populate` / `sdc-calculatedExpression` evaluation flow rather than the direct-test flow.
-2. **Pivot the runtime evaluator** — embed `cqf-fhir` engine (Java library) in the FastAPI sidecar, or call the `cql-translation-service` Docker as an evaluation endpoint. Bypasses HAPI CR for execution.
+2. **`return` defaults to DISTINCT** — CQL spec §5.4: "By default, the values returned will be distinct". A list of nine identical ordinals (9× LA6571-9 → 9× 3) was collapsing to [3] before `Sum`, returning 3 instead of 27. Fixed with explicit `return all`.
 
-For 0.1.1 the Library + TestScript are shipped as **specification artefacts** — downstream consumers (Inferno, Touchstone, AEGIS) can run them against any conforming runtime even though our reference container doesn't yet execute them green.
+Both findings captured in the `cql-development` skill so future sessions avoid the same loop.
+
+Site/consumer expectation for scoring: upload `Patient` and `QuestionnaireResponse` (with `subject` reference) to the server, then invoke:
+```
+GET /Library/phq-9-scoring/$evaluate?subject=Patient/{id}
+```
+Returns a `Parameters` resource with `PHQ9TotalScore` (Integer), `PHQ9Severity` (String), `PROMISDepressionTScore` (Decimal).
 
 
 

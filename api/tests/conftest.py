@@ -453,10 +453,10 @@ PRO_QUESTIONNAIRE_CANONICALS = {
 # https://fhir.bih-charite.de/pro-library and are produced by
 # https://github.com/BIH-CEI/pro-library (FSH/SUSHI).
 PRO_LIBRARY_NAMESPACE = "https://fhir.bih-charite.de/pro-library"
-PRO_LIBRARY_VERSION = "0.1.0"
+PRO_LIBRARY_VERSION = "0.1.2"
 PRO_LIBRARY_CANONICALS = {
     "phq_9":           f"{PRO_LIBRARY_NAMESPACE}/Questionnaire/phq-9",
-    "release_manifest": f"{PRO_LIBRARY_NAMESPACE}/Library/release-0-1-0",
+    "release_manifest": f"{PRO_LIBRARY_NAMESPACE}/Library/release-0-1-2",
 }
 
 

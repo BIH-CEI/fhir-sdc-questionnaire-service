@@ -9,7 +9,7 @@ ARG SDC_SHA256=be5c3f0a7f82e072b40739e05fb68f3e58e44c9bd040cd901b1b55c62f23dca2
 # PRO Library 0.1.0 — companion FHIR Package built from https://github.com/BIH-CEI/pro-library
 # Vendored in local-packages/ during the 0.x line (no published GitHub Release yet).
 # 0.2.0+ will switch to fetching from https://github.com/BIH-CEI/pro-library/releases.
-ARG PRO_LIBRARY_VERSION=0.1.1
+ARG PRO_LIBRARY_VERSION=0.1.2
 
 FROM debian:bookworm-slim AS fetch
 ARG MII_PRO_VERSION
