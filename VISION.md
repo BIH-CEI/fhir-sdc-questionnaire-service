@@ -1,4 +1,6 @@
-# Vision: A Normative, Versionable Source of PROM Questionnaires
+# Vision: Toward a Normative, Versionable Source of PROM Questionnaires
+
+> **Honest framing.** "Normative" is a claim that requires institutional authority no single party in the German PROM space currently holds cleanly. This work therefore builds the **technical infrastructure that a future normative authority would need**, and provides a **curated reference source** in the meantime. Section 1a below makes the authority gap explicit.
 
 > **Status.** Strategic document. Substrate for a planned DFG proposal and the long-horizon roadmap that frames every tactical decision in this repository. Living doc — revise as the position evolves.
 >
@@ -12,11 +14,35 @@ Patient-Reported Outcome Measures (PROMs) are the most fragmented data class in 
 
 The Medical Informatics Initiative (MII) PRO module ([Ammon et al. 2024 — *Bundesgesundheitsblatt* 67(6):656-667](https://doi.org/10.1007/s00103-024-03888-4); [PCOR-MII 2025](https://link.springer.com/article/10.1007/s41666-025-00187-8)) has produced FHIR profiles for the underlying data model and a first set of profiled `Questionnaire` resources for ~20 instruments. The infrastructure to *serve* this content normatively — versioned, license-aware, conformance-tested, distributable in multiple channels — is missing.
 
-This repository proposes that infrastructure: a **CRMI-conformant national reference Form Manager** that acts as the single source of truth for the FHIR-encoded PROM catalogue, distributes it through standards-based channels, and gates access by licence in a verifiable way.
+This repository proposes that infrastructure: a **CRMI-conformant reference Form Manager** that acts as a curated source for FHIR-encoded PROM content, distributes it through standards-based channels, and gates access by licence in a verifiable way — built so that a future authority can inherit and operationalise it without reshaping the technical substrate.
+
+## 1a. Authority and its limit
+
+"Normative" requires an entity with the legitimacy to be the referee in disputes over content. No party in the German PROM landscape today holds that cleanly:
+
+| Candidate | Reality |
+|---|---|
+| **BIH-CEI** | Methodologically credible; no national standards mandate; Charité-scoped. |
+| **MII** | Plausible — already publishes the MII PRO module. But MII is a *project*, not a permanent institution; its mandate is "Kerndatensatz for research data integration", not all PROM use. |
+| **NUM** | Operational reach across all 36 university hospitals; mandate is *research network*, not standards. |
+| **TMF e.V.** | Possible long-term trustee for methodological infrastructure; would need governance design. |
+| **AWMF / DNVF** | Substantively close (guidelines / health-services research) but lack publishing infrastructure. |
+| **IQTIG / KBV** | Hold genuine normative authority in specific quality-reporting / billing scopes; oversized for research-PROM. |
+| **HL7 Deutschland** | National affiliate; could publish a German IG; small organisation. |
+| **A new dedicated entity** | Long lead time, high political cost. |
+
+This work therefore explicitly separates two questions:
+
+1. **Building the infrastructure** that any future normative authority would need (CRMI conformance, SemVer versioning, manifest-based releases, validator container, license-gated distribution) — **achievable today**, technical decisions only.
+2. **Becoming or designating that authority** — a governance, policy, and stakeholder process that takes years and is **not in our gift**.
+
+BIH-CEI's role in the first phase is **initial steward and curator** — credible enough to publish a useful reference source, honest about not being the final authority. Plausible future configurations include MII extending its scope, a new trustee consortium under TMF, federation with HL7 Deutschland, or some hybrid. The technical architecture is deliberately agnostic about which configuration wins.
+
+The DFG proposal that this document feeds positions the work as *building what a normative authority needs* — a defensible scientific contribution — not as *being* that authority.
 
 ## 2. What "normative" means here
 
-A normative source of canonical resources must satisfy four properties simultaneously. Dropping any one collapses the value proposition.
+A normative source of canonical resources, *once authority is established*, must satisfy four properties simultaneously. Dropping any one collapses the value proposition. This work guarantees the technical preconditions for all four; the *normative* property in the strict sense is an aspirational endpoint contingent on §1a.
 
 | Property | Definition |
 |---|---|
@@ -30,7 +56,7 @@ A normative source of canonical resources must satisfy four properties simultane
 Seven layers, ordered from political (hardest to change, most determinative) to technical (easiest to revise).
 
 ### 3.1 Governance
-Who decides what is normative? An editorial board with representation from clinicians, methodologists, terminologists, and licence stakeholders. Submission/review/release process with explicit accountability. Versioning policy (when does a change warrant a major bump). Conflict-resolution procedure (e.g., upstream EORTC publishes v3.1 before German translation is reviewed). Without an institutional mandate this layer is missing — the technical artefact is then a high-quality reference implementation, not a normative source.
+Who decides what is normative? An editorial board with representation from clinicians, methodologists, terminologists, and licence stakeholders. Submission/review/release process with explicit accountability. Versioning policy (when does a change warrant a major bump). Conflict-resolution procedure (e.g., upstream EORTC publishes v3.1 before German translation is reviewed). **As of this writing no such institutional mandate exists** — see §1a for the candidate landscape. The technical artefact is therefore positioned as a credible *reference implementation* with provisional curation under BIH-CEI stewardship, structurally ready to slot into whatever governance configuration emerges.
 
 ### 3.2 Licence architecture
 PROM licences are heterogeneous: PROMIS is free, EORTC is academic-free with registration, BDI-II is paid per site. The source must:

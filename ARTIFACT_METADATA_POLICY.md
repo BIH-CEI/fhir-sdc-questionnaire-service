@@ -2,7 +2,7 @@
 
 > **Status.** DRAFT v0 — captures decisions taken so far and the open questions that block first publication. Marked `TODO` items must be resolved before the first 1.0.0 release of the PRO library.
 
-This document defines the metadata rules every canonical artefact (Questionnaire, ValueSet, CodeSystem, ConceptMap, Library, Provenance) published from the **PRO Library** must follow. It is the implementation contract behind the [`VISION.md`](VISION.md) "normative, versionable source" claim.
+This document defines the metadata rules every canonical artefact (Questionnaire, ValueSet, CodeSystem, ConceptMap, Library, Provenance) published from the **PRO Library** must follow. It is the implementation contract behind the [`VISION.md`](VISION.md) "curated reference source / future-authority-ready" infrastructure — the technical preconditions a future normative authority would inherit (see VISION.md §1a on the authority gap).
 
 The PRO Library lives in a separate repository from the runtime form-manager (this repo). See VISION.md §Content/Distribution split.
 
@@ -25,9 +25,12 @@ Applies to every canonical resource the PRO Library publishes:
 
 ## 2. Canonical URL namespace
 
-> **TODO — blocking.** The namespace is not yet decided. See VISION.md §3 for the decision matrix (BIH-CEI domain vs. consortium domain vs. neutral). Pick before the first publication — once published, canonicals are forever.
-
-Working placeholder used in this document: `https://example.org/fhir/pro-library`. Replace globally before tagging 1.0.0.
+> **WORKING — provisional for 0.x.** Namespace is `https://fhir.bih-charite.de/pro-library` for the 0.x line, owned by BIH-CEI as initial steward. This is **not** a final normative-authority decision (see VISION.md §1a). Two scenarios for 1.0.0:
+>
+> 1. **Authority stays with BIH-CEI / Charité** — namespace is final.
+> 2. **Authority moves to MII / a consortium / a federal body** — namespace migrates; we publish redirects + a `successor` extension on every 0.x artefact pointing to the new canonical, and keep the old namespace resolvable for ≥ 2 years.
+>
+> 0.x consumers must accept that the namespace may change at 1.0.0. Document this explicitly in the README of the pro-library repo.
 
 URL pattern, once decided:
 
@@ -35,12 +38,12 @@ URL pattern, once decided:
 {namespace}/{ResourceType}/{instrument-shortname}-{purpose-suffix}
 
 # Examples (placeholder namespace)
-https://example.org/fhir/pro-library/Questionnaire/phq-9
-https://example.org/fhir/pro-library/ValueSet/eortc-qlq-c30-scale-4pt
-https://example.org/fhir/pro-library/CodeSystem/eortc-qlq-c30
-https://example.org/fhir/pro-library/ConceptMap/phq-9-redcap-to-canonical
-https://example.org/fhir/pro-library/Library/release-2026-q3      # release manifest
-https://example.org/fhir/pro-library/Library/phq-9-scoring        # scoring CQL
+https://fhir.bih-charite.de/pro-library/Questionnaire/phq-9
+https://fhir.bih-charite.de/pro-library/ValueSet/eortc-qlq-c30-scale-4pt
+https://fhir.bih-charite.de/pro-library/CodeSystem/eortc-qlq-c30
+https://fhir.bih-charite.de/pro-library/ConceptMap/phq-9-redcap-to-canonical
+https://fhir.bih-charite.de/pro-library/Library/release-2026-q3      # release manifest
+https://fhir.bih-charite.de/pro-library/Library/phq-9-scoring        # scoring CQL
 ```
 
 Naming rules:
@@ -249,7 +252,8 @@ Whichever wins:
 
 | # | Decision | Blocking |
 |---|---|---|
-| 1 | Canonical URL namespace + authority owner | First 1.0.0 publication |
+| 1 | **Authority entity** for normativity (see VISION.md §1a) | 1.0.0 publication; informs whether the 0.x namespace stays or migrates |
+| 1a | Canonical URL namespace finalisation (currently `fhir.bih-charite.de/pro-library` provisionally) | First 1.0.0 publication; depends on #1 |
 | 2 | Sync vs. independent language versioning | First multi-language release |
 | 3 | PRO Library profile set (`cei-*-pro-questionnaire`) | First profile-claiming publication |
 | 4 | License-entitlement model (data structure for per-site/per-instrument permission) | First mTLS-gated distribution |
