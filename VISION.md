@@ -69,6 +69,21 @@ Every released `Questionnaire` is the FHIR encoding of a psychometrically valida
 - **Per-instrument test suite** — sample `QuestionnaireResponse`s with expected scores, traceable to the original instrument's validation paper
 - **Psychometric metadata** in `useContext` / extensions where applicable (Cronbach-α, MID/MCID)
 
+### 3.7a Repository organisation — content vs. distribution
+
+The work splits cleanly into two repositories with different cadence, governance, and release semantics:
+
+| Repo | Role | Versioning | Cadence |
+|---|---|---|---|
+| **`pro-library`** (new) | Content authority. FSH-authored Questionnaires, ValueSets, CodeSystems, ConceptMaps, scoring CQL libraries, per-instrument test suites, release manifests. Built with SUSHI → FHIR Package. | **SemVer per artefact**, starting at `1.0.0` for first publication. Release manifests pin per-artefact versions. | Per-instrument trajectory; releases when reviewed |
+| **`fhir-sdc-questionnaire-service`** (this repo) | Distribution authority. Container, REST `$package`, Atom syndication, NPM tarball — the runtime that *serves* PRO Library content alongside (or instead of) MII PRO. | Container-image SemVer; ties to specific `pro-library` releases via image tags | Per release; CI rebuilds when either pro-library or upstream IGs bump |
+
+**Relationship to MII PRO.** First-version PRO Library Questionnaires are **derived overlays** on MII PRO content via `Questionnaire.derivedFrom`, with versioned upstream canonicals (`...|2026.3.0`) so the derivation is reproducible. Where editorial corrections are needed (contained-VS expansions, translation completion, scoring formalisation), the PRO Library publishes the corrected variant under its own canonical, attributing the upstream and adding a `Provenance` record.
+
+**Transition strategy.** During the first phase, both upstreams stay live: the runtime container loads MII PRO 2026.3.0 *and* the early PRO Library releases. This buys time to settle namespace ownership and editorial governance without forcing a rights-transfer decision up front. Sites can opt into either source via manifest selection. Long-term, the PRO Library becomes the primary source as governance matures.
+
+**Metadata contract.** Every PRO Library artefact follows the [`ARTIFACT_METADATA_POLICY.md`](ARTIFACT_METADATA_POLICY.md) (canonical URL pattern, SemVer rules, required CRMI Shareable/Publishable fields, `derivedFrom`+`Provenance` requirements, license declaration, deprecation policy).
+
 ### 3.7 Standards alignment
 The source claims conformance to a documented stack so that consumers can discover its capabilities without reading prose:
 - **CRMI** Artifact Repository Service + Artifact Terminology Service CapabilityStatements (instantiates)
@@ -153,6 +168,7 @@ Coarse, illustrative — the DFG proposal would refine these.
 
 | WP | Theme | Deliverables |
 |---|---|---|
+| **WP0 — Content/Distribution Split** | Establish `pro-library` repo with FSH/SUSHI; first 1.0.0 release with `derivedFrom` overlay on MII PRO; runtime container loads both sources in parallel | New repo + first published Library + transitional dual-source loader |
 | **WP1 — Governance & Method** | Editorial process, versioning policy, licence-registry model | Process documentation, stakeholder engagement, governance proposal |
 | **WP2 — CRMI Conformance** | Profile-based capability-tier formalisation; CapabilityStatement instantiation | `cei-shareable/publishable/executable-pro-questionnaire` profiles, derived CS, conformance tests |
 | **WP3 — Distribution Channels** | Container, REST, syndication, NPM with byte-equivalence | Atom feed implementation, manifest endpoint, channel-equivalence test framework |
