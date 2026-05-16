@@ -12,6 +12,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/fhir-sdc-form-manager
   MII_PRO_VERSION: "2026.3.0"
+  PRO_LIBRARY_VERSION: "0.1.0"
 
 # Runs in parallel with the test workflow (test.yml). Both pipelines share
 # the same buildx GHA cache, so whichever boots second reuses layers and is
@@ -75,7 +76,49 @@ jobs:
             exit 1
           fi
 
-          echo "::notice::Image smoke test passed: $MII_PRO_COUNT MII PRO ${MII_PRO_VERSION} profiles loaded"
+          echo "::notice::MII PRO ${MII_PRO_VERSION}: $MII_PRO_COUNT StructureDefinitions loaded"
+
+          # PRO Library (BIH-CEI provisional) — assert release manifest + PHQ-9 loaded
+          PRO_LIB_PHQ9=$(curl -sf "http://localhost:18095/fhir/Questionnaire?url=https://fhir.bih-charite.de/pro-library/Questionnaire/phq-9&version=${PRO_LIBRARY_VERSION}&_summary=count" \
+                         | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
+          PRO_LIB_MANIFEST=$(curl -sf "http://localhost:18095/fhir/Library?url=https://fhir.bih-charite.de/pro-library/Library/release-0-1-0&version=${PRO_LIBRARY_VERSION}&_summary=count" \
+                             | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
+          echo "PRO Library ${PRO_LIBRARY_VERSION}: PHQ-9=$PRO_LIB_PHQ9, release manifest=$PRO_LIB_MANIFEST"
+
+          if [ "$PRO_LIB_PHQ9" -ne 1 ] || [ "$PRO_LIB_MANIFEST" -ne 1 ]; then
+            echo "::error::PRO Library ${PRO_LIBRARY_VERSION} did not load (expected PHQ-9 and release manifest to each return 1)"
+            docker logs fm-smoketest | tail -100
+            exit 1
+          fi
+
+          # Manifest integrity — every relatedArtifact in the manifest must be resolvable on the server
+          docker exec fm-smoketest sh -c 'apk add --no-cache curl jq 2>/dev/null || apt-get update -qq && apt-get install -y -qq curl jq' || true
+          MANIFEST_JSON=$(curl -sf "http://localhost:18095/fhir/Library?url=https://fhir.bih-charite.de/pro-library/Library/release-0-1-0&version=${PRO_LIBRARY_VERSION}")
+          echo "$MANIFEST_JSON" | python3 <<'PY'
+          import json, sys, urllib.parse, urllib.request
+          bundle = json.loads(sys.stdin.read())
+          lib = bundle['entry'][0]['resource']
+          missing = []
+          for ra in lib.get('relatedArtifact', []):
+              ref = ra.get('resource', '')
+              if '|' not in ref:
+                  continue
+              canonical, version = ref.rsplit('|', 1)
+              # Derive resource type from canonical path (.../Questionnaire/xyz)
+              rtype = canonical.rsplit('/', 2)[-2]
+              q = urllib.parse.urlencode({'url': canonical, 'version': version, '_summary': 'count'})
+              with urllib.request.urlopen(f'http://localhost:18095/fhir/{rtype}?{q}') as r:
+                  total = json.loads(r.read()).get('total', 0)
+              status = 'OK' if total == 1 else f'MISSING (total={total})'
+              print(f'  {rtype}: {canonical}|{version} → {status}')
+              if total != 1:
+                  missing.append(ref)
+          if missing:
+              print(f'::error::Manifest references {len(missing)} unresolvable artefact(s): {missing}', file=sys.stderr)
+              sys.exit(1)
+          print('::notice::PRO Library manifest integrity verified — all relatedArtifacts resolved')
+          PY
+
           docker rm -f fm-smoketest
 
       - name: Log in to GHCR

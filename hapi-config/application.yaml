@@ -42,6 +42,18 @@ hapi:
         reloadExisting: false
         fetchDependencies: false
 
+      # PRO Library (BIH-CEI) — companion content package, loaded in parallel to MII PRO.
+      # 0.x line is provisional under BIH-CEI stewardship (see VISION.md §1a on the
+      # authority gap). Derived from MII PRO 2026.3.0; SemVer per artefact.
+      # Source: https://github.com/BIH-CEI/pro-library
+      pro_library:
+        name: bih-cei.fhir.pro-library
+        version: 0.1.0
+        installMode: STORE_AND_INSTALL
+        packageUrl: file:///data/hapi/local-packages/bih-cei.fhir.pro-library-0.1.0.tgz
+        reloadExisting: false
+        fetchDependencies: false
+
 
       # German ISiK (German Interoperability Standard)
       # DISABLED: Snapshot generation causes HAPI startup failure

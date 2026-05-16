@@ -448,6 +448,17 @@ PRO_QUESTIONNAIRE_CANONICALS = {
     "phq_9":             f"{PRO_NAMESPACE}/mii-qst-pro-phq-9",
 }
 
+# PRO Library (BIH-CEI provisional, 0.x line) — companion content package.
+# These canonicals live under the provisional namespace
+# https://fhir.bih-charite.de/pro-library and are produced by
+# https://github.com/BIH-CEI/pro-library (FSH/SUSHI).
+PRO_LIBRARY_NAMESPACE = "https://fhir.bih-charite.de/pro-library"
+PRO_LIBRARY_VERSION = "0.1.0"
+PRO_LIBRARY_CANONICALS = {
+    "phq_9":           f"{PRO_LIBRARY_NAMESPACE}/Questionnaire/phq-9",
+    "release_manifest": f"{PRO_LIBRARY_NAMESPACE}/Library/release-0-1-0",
+}
+
 
 @pytest.fixture
 async def pro_questionnaires(fhir_server_config):
