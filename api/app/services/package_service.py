@@ -145,7 +145,7 @@ class DependencyResolver:
 
         # Fetch ValueSets
         for url in valueset_urls:
-            if url in self.processed_urls:
+            if url.startswith("#") or url in self.processed_urls:
                 continue
 
             valueset = await self.fetch_canonical(url, "ValueSet")
