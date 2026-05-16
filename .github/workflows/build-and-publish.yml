@@ -78,6 +78,12 @@ jobs:
 
           echo "::notice::MII PRO ${MII_PRO_VERSION}: $MII_PRO_COUNT StructureDefinitions loaded"
 
+          # HAPI's PackageInstallerSvc skips Questionnaire/Library/Provenance/IG —
+          # load them externally from the local-packages tarballs against the
+          # exposed FHIR endpoint before asserting on PRO Library content.
+          HAPI_URL=http://localhost:18095/fhir PKGS_DIR=./local-packages \
+            ./hapi-scripts/load-instance-resources.sh
+
           # PRO Library (BIH-CEI provisional) — assert release manifest + PHQ-9 loaded
           PRO_LIB_PHQ9=$(curl -sf "http://localhost:18095/fhir/Questionnaire?url=https://fhir.bih-charite.de/pro-library/Questionnaire/phq-9&version=${PRO_LIBRARY_VERSION}&_summary=count" \
                          | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")

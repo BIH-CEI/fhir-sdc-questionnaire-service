@@ -71,6 +71,14 @@ COPY --from=fetch /pkgs/ /data/hapi/local-packages/
 COPY local-packages/bih-cei.fhir.pro-library-${PRO_LIBRARY_VERSION}.tgz /data/hapi/local-packages/
 COPY hapi-config/application.yaml /data/hapi/application.yaml
 
+# NOTE: HAPI's PackageInstallerSvc only installs NamingSystem / CodeSystem /
+# ValueSet / StructureDefinition / ConceptMap / SearchParameter / Subscription.
+# Questionnaire, Library, Provenance, ImplementationGuide from our packages
+# are skipped and must be PUT externally after the server boots — see
+# hapi-scripts/load-instance-resources.sh. The HAPI base image is distroless,
+# so the loader cannot live inside the image; CI workflow + test compose
+# both call it from the host runner against the exposed FHIR endpoint.
+
 ENV SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/hapi/ \
     HAPI_FHIR_CR_ENABLED=true
 

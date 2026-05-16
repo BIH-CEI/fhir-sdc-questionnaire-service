@@ -70,10 +70,17 @@ hapi:
 
     # Validation
     # Enabled for SDC profile validation
-    # Note: Was disabled due to ISiK compatibility issues, but ISiK is now disabled
+    # Request-time validation is intentionally OFF on this server.
+    # Reasoning: validation belongs at publication time (in the dedicated
+    # Reference Validation Service container — VISION.md WP8b) and at
+    # consumer-side write time, NOT during our own bootstrap loading.
+    # The MII PRO upstream Questionnaires (and our derivedFrom overlays)
+    # have known non-fatal validation issues (e.g. translation extension
+    # placement) that would block PUT — those are conformance concerns
+    # handled separately, not boot-loading concerns.
     validation:
-      enabled: true
-      requests_enabled: true
+      enabled: false
+      requests_enabled: false
 
     # Subscription (optional)
     subscription:

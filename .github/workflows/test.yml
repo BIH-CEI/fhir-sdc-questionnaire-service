@@ -57,6 +57,14 @@ jobs:
           timeout 120 bash -c 'until curl -sf http://localhost:8081/fhir/metadata -o /dev/null; do sleep 3; done'
           sleep 10
 
+      - name: Load instance resources HAPI's installer skips
+        run: |
+          # Questionnaire / Library / Provenance / IG are not auto-installed
+          # by HAPI's PackageInstallerSvc — PUT them externally from the
+          # local-packages tarballs against the exposed FHIR endpoint.
+          HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages \
+            ./hapi-scripts/load-instance-resources.sh
+
       - name: Run SDC compliance + integration tests (with coverage)
         run: |
           cd api
