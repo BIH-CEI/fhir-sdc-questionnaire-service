@@ -3,7 +3,8 @@
   "backend": "dolt",
   "dolt_mode": "server",
   "dolt_server_host": "127.0.0.1",
-  "dolt_server_port": 47577,
   "dolt_database": "fsqs",
-  "project_id": "e98d07e5-4569-47e7-ac6c-f90604b8c601"
+  "project_id": "e98d07e5-4569-47e7-ac6c-f90604b8c601",
+  "dolt_host": "127.0.0.1",
+  "dolt_user": "root"
 }

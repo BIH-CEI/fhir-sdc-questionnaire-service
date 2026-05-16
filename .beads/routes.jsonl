@@ -1,0 +1,6 @@
+{"prefix":"bh","path":"../../../bright-harbor"}
+{"prefix":"fsa","path":"../fhir-sdc-api"}
+{"prefix":"fsqs","path":"."}
+{"prefix":"kotg","path":"../../projects/kig-onko-therapy-goal"}
+{"prefix":"adm","path":"../../private/ato-dice-matrix"}
+{"prefix":"se","path":"../../fhir-profiling/senologieonfhir"}
