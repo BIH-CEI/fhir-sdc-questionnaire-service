@@ -426,6 +426,69 @@ async def load_test_fixtures(fhir_server):
             logger.warning(f"Failed to cleanup {fixture_name} ({resource_id}): {e}")
 
 
+# ============================================================================
+# Real MII PRO content — pre-loaded by the container at boot time
+# ============================================================================
+
+# Canonical URLs of MII PRO 2026.3.0 Questionnaires that the Form Manager
+# image guarantees to ship and load. Tests that hit these can skip the
+# fragile upload-then-resolve dance — content is deterministic and always
+# present.
+PRO_NAMESPACE = "https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/Questionnaire"
+PRO_QUESTIONNAIRE_CANONICALS = {
+    # 2 external answerValueSet bindings (qlq-c30-scale-4pt / -7pt),
+    # each VS in turn binds CodeSystem mii-cs-pro-eortc-qlq-c30 →
+    # full Q → VS → CS chain, ideal for transitive-dep tests.
+    "qlq_c30_variant_a": f"{PRO_NAMESPACE}/mii-qst-pro-eortc-qlq-c30-variant-a",
+    # 2 contained #-fragment ValueSet bindings — exercises the
+    # contained-VS code path (separate from external canonical resolution).
+    "qlq_c30":           f"{PRO_NAMESPACE}/mii-qst-pro-eortc-qlq-c30",
+    # No answerValueSet at all — for baseline structural tests
+    # (Bundle.type, first-entry, no-deps minimal bundle, SDC tags, etc.).
+    "phq_9":             f"{PRO_NAMESPACE}/mii-qst-pro-phq-9",
+}
+
+
+@pytest.fixture
+async def pro_questionnaires(fhir_server_config):
+    """
+    Resolve MII PRO Questionnaires that the container ships pre-loaded.
+
+    Returns dict of short-name → {"id", "url", "version"} for each entry in
+    PRO_QUESTIONNAIRE_CANONICALS. Fails the test run loudly if a referenced
+    PRO Questionnaire is missing — that means the container's IG bundling
+    is broken, not the test.
+    """
+    base_url = fhir_server_config["base_url"]
+    resolved: Dict[str, Dict[str, Any]] = {}
+
+    async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
+        for short_name, canonical in PRO_QUESTIONNAIRE_CANONICALS.items():
+            response = await client.get(
+                "/Questionnaire", params={"url": canonical, "_summary": "true"}
+            )
+            response.raise_for_status()
+            bundle = response.json()
+            if bundle.get("total", 0) == 0 or not bundle.get("entry"):
+                pytest.fail(
+                    f"MII PRO Questionnaire not found in container: {canonical}. "
+                    f"The Form Manager image is supposed to bake this in — check "
+                    f"Dockerfile.form-manager and the IG install step."
+                )
+            entry = bundle["entry"][0]["resource"]
+            resolved[short_name] = {
+                "id": entry["id"],
+                "url": entry["url"],
+                "version": entry.get("version"),
+            }
+            logger.info(
+                f"Resolved PRO Questionnaire {short_name!r} → "
+                f"id={entry['id']} version={entry.get('version')}"
+            )
+
+    return resolved
+
+
 # Marker for skipping tests if HAPI is not available
 def pytest_configure(config):
     """Register custom markers."""
