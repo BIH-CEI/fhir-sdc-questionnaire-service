@@ -1,64 +1,58 @@
-# Environment files
-.env
-*.env.local
 
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+.beads-credential-key
+.dolt/
+.DS_Store
+.eggs/
+.env
+.idea/
+.installed.cfg
 .Python
-env/
-venv/
-ENV/
+.vscode/
+*.db
+*.egg
+*.egg-info/
+*.env.local
+*.key
+*.log
+*.pem
+*.pid
+*.pid.lock
+*.py[cod]
+*.seed
+*.so
+*.sqlite
+*.sqlite3
+*.swo
+*.swp
+*~
+*$py.class
+# Beads / Dolt files (added by bd init)
+# Database
+# Docker
+# Environment files
+# FastAPI / Uvicorn
+# IDEs
+# Node (for future frontend)
+# Python
+# Secrets
 build/
+credentials.json
 develop-eggs/
 dist/
 downloads/
 eggs/
-.eggs/
+env/
+ENV/
 lib/
 lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# FastAPI / Uvicorn
-*.log
-
-# Docker
-*.pid
-*.seed
-*.pid.lock
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Node (for future frontend)
 node_modules/
 npm-debug.log*
+parts/
+sdist/
+tmp/
+var/
+venv/
+wheels/
 yarn-debug.log*
 yarn-error.log*
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Secrets
-*.pem
-*.key
-credentials.json
-
-# Beads / Dolt files (added by bd init)
-.dolt/
-.beads-credential-key
