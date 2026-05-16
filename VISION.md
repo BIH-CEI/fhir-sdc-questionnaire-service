@@ -84,6 +84,10 @@ The work splits cleanly into two repositories with different cadence, governance
 
 **Metadata contract.** Every PRO Library artefact follows the [`ARTIFACT_METADATA_POLICY.md`](ARTIFACT_METADATA_POLICY.md) (canonical URL pattern, SemVer rules, required CRMI Shareable/Publishable fields, `derivedFrom`+`Provenance` requirements, license declaration, deprecation policy).
 
+**Validation primitive.** A third sibling, the **Reference Validation Service** (`pro-library-validator` container, see Roadmap WP8b), ships in lockstep with each PRO Library release. The HL7 FHIR Validator runs as a long-lived JVM service inside the container with every required IG package pre-baked — sites validate locally, offline, deterministically against the exact library version they consume. Profile authoring (PRO Library) and validator release are coupled: a profile change is not a release until the validator container has been rebuilt and self-tested against it.
+
+**Release primitive — Artifact Collection.** Every PRO Library release is published as a CRMI **`Library` resource of `type = asset-collection`** (a "manifest"), pinning the exact version of every contained Questionnaire/ValueSet/CodeSystem/CQL Library. Per-site licence-gated bundles are also asset-collection Libraries — sites compose by referencing the canonical release manifest plus their own derived artefacts. Consumers pull via `$crmi-package?manifest=https://.../Library/release-x.y.z` and receive a deterministic, reproducible bundle. This is the unit of release, the unit of distribution, and (with mTLS gating) the unit of entitlement.
+
 ### 3.7 Standards alignment
 The source claims conformance to a documented stack so that consumers can discover its capabilities without reading prose:
 - **CRMI** Artifact Repository Service + Artifact Terminology Service CapabilityStatements (instantiates)
@@ -176,7 +180,8 @@ Coarse, illustrative — the DFG proposal would refine these.
 | **WP5 — Trust & Provenance** | Signed releases, Provenance resources, reproducibility | Signing pipeline, Provenance generation, reproducibility test |
 | **WP6 — Scientific Validation** | Scoring CQL libraries, per-instrument test suites | CQL library set, test suite, validation-paper traceability matrix |
 | **WP7 — Site Extension Patterns** | Reference patterns for site-side adaptation | Documented patterns + reference site bundle |
-| **WP8 — Reference Clients** | Dockerised SDC-role implementations + conformance tests | Form Renderer / Filler / Receiver containers, role conformance test suite |
+| **WP8a — Reference Capture Clients** | Dockerised SDC-role implementations + conformance tests | Form Renderer / Filler / Receiver containers, role conformance test suite, lockstep tag with PRO Library release |
+| **WP8b — Reference Validation Service** | Containerised local validator: official HL7 FHIR Validator behind a long-lived JVM service, all required IG packages pre-baked, HTTP API for sync + batch validation, offline-capable, self-test corpus shipped in the image | `ghcr.io/bih-cei/pro-library-validator:<libversion>` image; `POST /Validation` and `/Validation/$bundle` endpoints; per-instrument should-pass / should-fail test cases; lockstep release with PRO Library content |
 | **WP9 — Evaluation & Dissemination** | Adoption studies, publication, IG feedback | Implementation studies at ≥ 3 MII sites, peer-reviewed publications, HL7 ballot comments |
 
 ## References

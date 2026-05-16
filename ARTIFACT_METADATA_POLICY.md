@@ -232,6 +232,8 @@ Whichever wins:
 > - `cei-executable-pro-questionnaire` (the formalisation of "MII PRO `populatable`+`extractable` ⇒ CRMI executable" — see VISION.md §6 RQ-Map)
 >
 > These are scaffolded in the new pro-library repo, not here.
+>
+> **Coupling with the Validation Service.** Profile work and the Reference Validation Service container (VISION.md WP8b) are inseparable. A profile change is not a publication until the `pro-library-validator:<libversion>` image has been rebuilt and verified against the bundled per-instrument should-pass / should-fail test corpus. Releasing profiles without the matching validator means consumers cannot machine-verify what we claim conformance to.
 
 ---
 
