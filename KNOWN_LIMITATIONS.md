@@ -2,6 +2,21 @@
 
 This document tracks known limitations, expected failures, and server-specific behaviors in the SDC Form Manager test suite.
 
+## PRO Library 0.1.1 — CQL execution gap
+
+The PRO Library 0.1.1 ships a CQL scoring `Library` (`phq-9-scoring`) plus a `TestScript` that exercises `Library/$evaluate` for ten boundary/extreme PHQ-9 response fixtures (raw=0, 4, 5, 9, 10, 14, 15, 19, 20, 27 → expected TotalScore + Severity + PROMIS Depression T-Score). The CQL itself is **independently verified** — `cqframework/cql-translation-service` Docker image compiles it to ELM with 0 errors, 0 warnings (signatures=Overloads). The pre-compiled ELM JSON is shipped in `Library.content` alongside the raw CQL.
+
+HAPI CR loads the Library at boot and the CQL engine kicks in on `Library/$evaluate` — but as of the version pinned in `Dockerfile.form-manager`, **the QuestionnaireResponse passed as a library parameter does not reach the CQL engine.** All three parameter-passing patterns tested (`resource`, `valueReference`, separate `data` Bundle) return `data-absent: unknown` for the scoring expressions. `QuestionnaireResponse/$extract` throws `NullPointerException: theResourceName must not be blank`.
+
+This is a HAPI CR integration issue (not a CQL/spec issue). Two candidate paths for 0.1.2:
+
+1. **Redesign the Library for SDC flow** — drop the `parameter "Response" QuestionnaireResponse` and use `context Patient` + `[QuestionnaireResponse]` retrieve. The Library then matches the SDC `$populate` / `sdc-calculatedExpression` evaluation flow rather than the direct-test flow.
+2. **Pivot the runtime evaluator** — embed `cqf-fhir` engine (Java library) in the FastAPI sidecar, or call the `cql-translation-service` Docker as an evaluation endpoint. Bypasses HAPI CR for execution.
+
+For 0.1.1 the Library + TestScript are shipped as **specification artefacts** — downstream consumers (Inferno, Touchstone, AEGIS) can run them against any conforming runtime even though our reference container doesn't yet execute them green.
+
+
+
 ## HAPI FHIR Server Limitations
 
 ### SDC Operations NOT Supported Natively

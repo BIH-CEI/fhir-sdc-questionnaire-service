@@ -12,7 +12,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/fhir-sdc-form-manager
   MII_PRO_VERSION: "2026.3.0"
-  PRO_LIBRARY_VERSION: "0.1.0"
+  PRO_LIBRARY_VERSION: "0.1.1"
 
 # Runs in parallel with the test workflow (test.yml). Both pipelines share
 # the same buildx GHA cache, so whichever boots second reuses layers and is

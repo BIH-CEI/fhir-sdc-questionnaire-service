@@ -48,9 +48,9 @@ hapi:
       # Source: https://github.com/BIH-CEI/pro-library
       pro_library:
         name: bih-cei.fhir.pro-library
-        version: 0.1.0
+        version: 0.1.1
         installMode: STORE_AND_INSTALL
-        packageUrl: file:///data/hapi/local-packages/bih-cei.fhir.pro-library-0.1.0.tgz
+        packageUrl: file:///data/hapi/local-packages/bih-cei.fhir.pro-library-0.1.1.tgz
         reloadExisting: false
         fetchDependencies: false
 
