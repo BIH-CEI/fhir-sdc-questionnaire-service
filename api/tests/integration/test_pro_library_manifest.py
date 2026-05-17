@@ -136,11 +136,11 @@ class TestReleaseManifestIntegrity:
         related = lib.get("relatedArtifact", [])
         assert len(related) >= 1, "Manifest has no relatedArtifact entries — empty release?"
 
-        # Resource types that do not carry a `version` element in R4 are
-        # exempt from the |version pin requirement and are resolved by url
-        # only. (R5 promotes ObservationDefinition to a versioned canonical;
-        # this list shrinks on the R5 migration.)
-        UNVERSIONED_IN_R4 = {"ObservationDefinition"}
+        # R4 resource types that don't carry a canonical-URL search
+        # parameter — resolved by reading the id directly. (R5 promotes
+        # ObservationDefinition to a fully versioned canonical; this list
+        # shrinks on the R5 migration.)
+        NO_URL_SEARCH_IN_R4 = {"ObservationDefinition"}
 
         failures = []
         for ra in related:
@@ -149,17 +149,14 @@ class TestReleaseManifestIntegrity:
             # Resource type sits at the path segment before the id
             # (e.g. https://.../pro-library/Questionnaire/phq-9 → Questionnaire)
             rtype = canonical_url.rsplit("/", 2)[-2]
+            rid = canonical_url.rsplit("/", 1)[-1]
 
-            if rtype in UNVERSIONED_IN_R4:
-                r = await fhir_server.get(
-                    f"/{rtype}",
-                    params={"url": canonical_url, "_summary": "true"},
-                )
-                total = r.json().get("total", 0) if r.status_code == 200 else -1
-                if total < 1:
+            if rtype in NO_URL_SEARCH_IN_R4:
+                r = await fhir_server.get(f"/{rtype}/{rid}")
+                if r.status_code != 200:
                     failures.append(
-                        f"{rtype}: {canonical_url} not resolvable "
-                        f"(status={r.status_code}, total={total})"
+                        f"{rtype}: {rid} not resolvable "
+                        f"(read by id, status={r.status_code})"
                     )
                 continue
 
