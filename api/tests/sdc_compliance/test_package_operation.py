@@ -626,26 +626,26 @@ class TestDependencyResolution:
         cs_urls = [cs.get("url") for cs in codesystems]
         assert "http://example.org/CodeSystem/deep-nested" in cs_urls
 
+    @pytest.mark.xfail(
+        reason="HAPI 8.4 CR's QuestionnairePackageProvider throws 500 on MII PRO "
+        "2026.3.0 PHQ-9 (regressed from partial-bundle behaviour previously "
+        "documented in commit eeb3492). Test kept as a regression sentinel: "
+        "when HAPI either fixes the crash or starts returning an SDC-conformant "
+        "Bundle, xfail flips to unexpected pass and we re-evaluate whether the "
+        "FastAPI PackageService layer can be reduced to a thin proxy.",
+        strict=False,
+    )
     async def test_hapi_native_package_is_partial(self, hapi_client, pro_questionnaires):
         """
-        Test: HAPI FHIR's native $package returns a Bundle but is not SDC-conformant.
-
-        Test ID: TEST-PKG-HAPI-001
-        Purpose: Document the gap between HAPI's CR-provided $package and the
+        Document the gap between HAPI's CR-provided $package and the
         SDC $package operation our FastAPI layer implements.
 
-        As of HAPI 8.4+, the Clinical Reasoning module ships a
-        QuestionnairePackageProvider that responds to $package. However, it:
-          - returns Bundle.type = "transaction"   (SDC requires "collection")
-          - resolves StructureDefinitions from item.definition
-          - DOES NOT resolve answerValueSet → ValueSet
-          - DOES NOT resolve referenced CodeSystems
-          - DOES NOT resolve cqf-library extensions → Library
-          - DOES NOT resolve itemExtractionContext → Observation profiles
-
-        Our FastAPI PackageService fills those gaps, so this test documents
-        WHY the FastAPI layer remains necessary even though HAPI now answers
-        the operation.
+        HAPI 8.4 ships a QuestionnairePackageProvider that responds to $package.
+        On MII PRO 2026.3.0 PHQ-9 it currently 500s (see xfail). When it did
+        return a Bundle it was Bundle.type=transaction and omitted
+        answerValueSet/CodeSystem/cqf-library/itemExtractionContext resolution.
+        Our FastAPI PackageService fills those gaps — this test documents WHY
+        that layer remains necessary.
         """
         phq9_id = pro_questionnaires["phq_9"]["id"]
         response = await hapi_client.get(f"/Questionnaire/{phq9_id}/$package")
@@ -655,9 +655,6 @@ class TestDependencyResolution:
 
         bundle = response.json()
         assert bundle["resourceType"] == "Bundle"
-        # HAPI native is NOT SDC-conformant — expect transaction bundle, not collection.
-        # If this assertion ever flips, HAPI has become SDC-conformant and the
-        # FastAPI layer may be reducible to a thin proxy.
         assert bundle.get("type") == "transaction", \
             "HAPI native still returns transaction; SDC requires collection — " \
             "FastAPI layer remains responsible for SDC conformance."
