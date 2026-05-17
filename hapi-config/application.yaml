@@ -46,11 +46,14 @@ hapi:
       # 0.x line is provisional under BIH-CEI stewardship (see VISION.md §1a on the
       # authority gap). Derived from MII PRO 2026.3.0; SemVer per artefact.
       # Source: https://github.com/BIH-CEI/pro-library
+      # Version interpolated from PRO_LIBRARY_VERSION env var (set by the
+      # Dockerfile build-arg, sourced from versions.env at repo root).
+      # Single source of truth — never hardcode the version here.
       pro_library:
         name: bih-cei.fhir.pro-library
-        version: 0.1.3
+        version: ${PRO_LIBRARY_VERSION}
         installMode: STORE_AND_INSTALL
-        packageUrl: file:///data/hapi/local-packages/bih-cei.fhir.pro-library-0.1.3.tgz
+        packageUrl: file:///data/hapi/local-packages/bih-cei.fhir.pro-library-${PRO_LIBRARY_VERSION}.tgz
         reloadExisting: false
         fetchDependencies: false
 

@@ -1,4 +1,5 @@
 """Application configuration."""
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -8,11 +9,12 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "SDC Form Manager API"
-    # SemVer of THIS service (the form-manager runtime: HAPI image + FastAPI
-    # sidecar). Decoupled from the bundled FHIR content version — that lives
-    # in Dockerfile.form-manager's PRO_LIBRARY_VERSION and is recorded as a
-    # separate Docker label. Runtime and content evolve independently.
-    app_version: str = "0.1.0"
+    # SemVer of THIS service (the form-manager runtime). Sourced from the
+    # FORM_MANAGER_VERSION env var (set by the Dockerfile build-arg, which is
+    # in turn sourced from versions.env at repo root). Falls back to "dev"
+    # when running outside the container without the env var set.
+    # Decoupled from bundled FHIR content; never hardcode here.
+    app_version: str = Field(default="dev", validation_alias="FORM_MANAGER_VERSION")
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     log_level: str = "info"

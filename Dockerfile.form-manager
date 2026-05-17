@@ -6,14 +6,15 @@ ARG MII_PRO_VERSION=2026.3.0
 ARG MII_PRO_SHA256=02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701
 ARG SDC_VERSION=3.0.0
 ARG SDC_SHA256=be5c3f0a7f82e072b40739e05fb68f3e58e44c9bd040cd901b1b55c62f23dca2
-# PRO Library 0.1.0 — companion FHIR Package built from https://github.com/BIH-CEI/pro-library
-# Vendored in local-packages/ during the 0.x line (no published GitHub Release yet).
-# 0.2.0+ will switch to fetching from https://github.com/BIH-CEI/pro-library/releases.
-ARG PRO_LIBRARY_VERSION=0.1.3
-# Form-manager runtime SemVer — decoupled from PRO_LIBRARY content version.
-# The runtime (HAPI image + FastAPI sidecar) evolves independently from the
-# FHIR content it bundles. Bump on functionality changes, not on content bumps.
-ARG FORM_MANAGER_VERSION=0.1.0
+# "Our" versions — single source of truth lives in versions.env at repo root.
+# CI sources versions.env and passes --build-arg; docker-compose reads it via
+# `env_file:`. NO defaults here on purpose: builds must be explicit about the
+# runtime + content versions they ship.
+#
+# - FORM_MANAGER_VERSION  — this repo's runtime SemVer (HAPI image + sidecar).
+# - PRO_LIBRARY_VERSION   — bundled BIH-CEI/pro-library content version.
+ARG FORM_MANAGER_VERSION
+ARG PRO_LIBRARY_VERSION
 
 FROM debian:bookworm-slim AS fetch
 ARG MII_PRO_VERSION
@@ -84,8 +85,13 @@ COPY hapi-config/application.yaml /data/hapi/application.yaml
 # so the loader cannot live inside the image; CI workflow + test compose
 # both call it from the host runner against the exposed FHIR endpoint.
 
+# Propagate version build-args to runtime ENV so:
+#   - HAPI's application.yaml can interpolate ${PRO_LIBRARY_VERSION} (Spring Boot)
+#   - The FastAPI sidecar can report FORM_MANAGER_VERSION via /health + OpenAPI
 ENV SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/hapi/ \
-    HAPI_FHIR_CR_ENABLED=true
+    HAPI_FHIR_CR_ENABLED=true \
+    PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION} \
+    FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}
 
 LABEL org.opencontainers.image.title="FHIR SDC Form Manager (HAPI + SDC + MII PRO + PRO Library)" \
       org.opencontainers.image.vendor="Berlin Institute of Health" \

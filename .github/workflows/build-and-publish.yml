@@ -11,8 +11,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/fhir-sdc-form-manager
+  # MII PRO is external content with its own cadence — kept on its own
+  # variable here, NOT in versions.env (which only tracks "our" things:
+  # FORM_MANAGER_VERSION + PRO_LIBRARY_VERSION, sourced per-job below).
   MII_PRO_VERSION: "2026.3.0"
-  PRO_LIBRARY_VERSION: "0.1.3"
 
 # Runs in parallel with the test workflow (test.yml). Both pipelines share
 # the same buildx GHA cache, so whichever boots second reuses layers and is
@@ -32,6 +34,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Load "our" versions from versions.env
+        # Single source of truth: versions.env at repo root. Exports
+        # FORM_MANAGER_VERSION + PRO_LIBRARY_VERSION into GITHUB_ENV so
+        # subsequent steps can use ${{ env.VAR }} and shell ${VAR} alike.
+        run: |
+          set -a; source versions.env; set +a
+          echo "FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}" >> "$GITHUB_ENV"
+          echo "PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION}" >> "$GITHUB_ENV"
+
       - name: Compute image metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -41,6 +52,7 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=raw,value=mii-pro-${{ env.MII_PRO_VERSION }},enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=raw,value=form-manager-${{ env.FORM_MANAGER_VERSION }},enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
             type=ref,event=tag
 
       - name: Build image (load to local for smoke test)
@@ -50,6 +62,10 @@ jobs:
           file: Dockerfile.form-manager
           load: true
           tags: fhir-sdc-form-manager:ci
+          build-args: |
+            FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
+            PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
+            MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -87,7 +103,9 @@ jobs:
           # PRO Library (BIH-CEI provisional) — assert release manifest + PHQ-9 loaded
           PRO_LIB_PHQ9=$(curl -sf "http://localhost:18095/fhir/Questionnaire?url=https://fhir.bih-charite.de/pro-library/Questionnaire/phq-9&version=${PRO_LIBRARY_VERSION}&_summary=count" \
                          | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
-          PRO_LIB_MANIFEST=$(curl -sf "http://localhost:18095/fhir/Library?url=https://fhir.bih-charite.de/pro-library/Library/release-0-1-3&version=${PRO_LIBRARY_VERSION}&_summary=count" \
+          # Manifest id mirrors the version with dots → dashes
+          MANIFEST_ID="release-${PRO_LIBRARY_VERSION//./-}"
+          PRO_LIB_MANIFEST=$(curl -sf "http://localhost:18095/fhir/Library?url=https://fhir.bih-charite.de/pro-library/Library/${MANIFEST_ID}&version=${PRO_LIBRARY_VERSION}&_summary=count" \
                              | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
           echo "PRO Library ${PRO_LIBRARY_VERSION}: PHQ-9=$PRO_LIB_PHQ9, release manifest=$PRO_LIB_MANIFEST"
 
@@ -120,5 +138,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
+            PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
+            MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
