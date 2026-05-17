@@ -29,10 +29,16 @@ services:
       hapi.fhir.allow_multiple_delete: true
       hapi.fhir.allow_external_references: true
 
-      # Enable validation interceptor (enforces required fields)
-      hapi.fhir.validation.requests_enabled: true
-      hapi.fhir.validation.responses_enabled: false  # Don't validate responses
-      hapi.fhir.enable_repository_validating_interceptor: true
+      # Request-time validation is intentionally OFF on this server — same
+      # rationale as the main application.yaml: MII PRO upstream
+      # Questionnaires (and our derivedFrom overlays) have known non-fatal
+      # validation issues (e.g. translation extension placement) that would
+      # block PUT during boot-loading. Validation belongs at publication
+      # time (dedicated Reference Validation Service) and consumer-side
+      # write time, not during our test stack's instance-resource load.
+      hapi.fhir.validation.requests_enabled: false
+      hapi.fhir.validation.responses_enabled: false
+      hapi.fhir.enable_repository_validating_interceptor: false
 
       # Logging
       spring.jpa.show_sql: false

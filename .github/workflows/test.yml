@@ -69,10 +69,21 @@ jobs:
 
       - name: Load instance resources HAPI's installer skips
         run: |
-          # Questionnaire / Library / Provenance / IG are not auto-installed
-          # by HAPI's PackageInstallerSvc — PUT them externally from the
-          # local-packages tarballs against the exposed FHIR endpoint.
-          HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages \
+          # Questionnaire / Library / Provenance / IG / OD are not auto-
+          # installed by HAPI's PackageInstallerSvc — PUT them externally
+          # from the local-packages tarballs against the exposed FHIR
+          # endpoint.
+          #
+          # The runner's ./local-packages/ only has the pro-library tarball
+          # (MII PRO + SDC are fetched into the image at build time, never
+          # land on the runner). docker cp them out of the container so the
+          # loader sees the full set.
+          mkdir -p ./local-packages-merged
+          cp ./local-packages/*.tgz ./local-packages-merged/ 2>/dev/null || true
+          docker cp hapi-fhir-test:/data/hapi/local-packages/. ./local-packages-merged/
+          ls -la ./local-packages-merged/
+
+          HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages-merged \
             ./hapi-scripts/load-instance-resources.sh
 
       - name: Run SDC compliance + integration tests (with coverage)
