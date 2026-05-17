@@ -1,7 +1,12 @@
 """Questionnaire API endpoints."""
 from fastapi import APIRouter, HTTPException, Query, Depends, Body, Path
 from typing import Optional, List
-from app.services import get_fhir_client, FHIRClientService, PackageService
+from app.services import (
+    get_fhir_client,
+    FHIRClientService,
+    PackageService,
+    ScoringExtractService,
+)
 from app.services.localization_service import LocalizationService
 from app.config import get_settings
 import logging
@@ -17,6 +22,7 @@ router = APIRouter(
 # Service singletons
 _package_service = None
 _localization_service = None
+_scoring_extract_service = None
 
 
 def get_package_service() -> PackageService:
@@ -25,6 +31,14 @@ def get_package_service() -> PackageService:
     if _package_service is None:
         _package_service = PackageService(settings.fhir_base_url)
     return _package_service
+
+
+def get_scoring_extract_service() -> ScoringExtractService:
+    """Get singleton scoring-extract service instance."""
+    global _scoring_extract_service
+    if _scoring_extract_service is None:
+        _scoring_extract_service = ScoringExtractService(settings.fhir_base_url)
+    return _scoring_extract_service
 
 
 def get_localization_service() -> LocalizationService:
@@ -565,4 +579,90 @@ async def localize_questionnaire_by_url(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error localizing questionnaire by URL {url}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# $compute-and-extract
+# ============================================================================
+# Bridges the HAPI CR / SDC gap: HAPI CR's $populate doesn't evaluate
+# sdc-calculatedExpression, and HAPI's $extract requires the QR to already
+# carry score-item values. This operation orchestrates Library/$evaluate +
+# Observation-construction internally, so a consumer makes ONE call:
+#
+#   POST /api/questionnaires/{id}/$compute-and-extract
+#   Body: { "resourceType": "Parameters",
+#           "parameter": [{"name":"subject","valueReference":{"reference":"Patient/X"}}] }
+#
+# Returns a Bundle:
+#   - persist=true (default): 'collection' Bundle of the persisted Observations
+#   - persist=false:           'transaction' Bundle the caller can POST themselves
+#
+# Observations are constructed per the SCORE_OBSERVATION_REGISTRY in
+# scoring_extract_service.py — one entry per Questionnaire id, mapping CQL
+# defines to LOINC codes + optional severity interpretation.
+
+@router.post("/{questionnaire_id}/$compute-and-extract", response_model=dict)
+async def compute_and_extract(
+    questionnaire_id: str = Path(..., description="Questionnaire id (e.g. 'phq-9')"),
+    body: dict = Body(
+        ...,
+        description="Parameters resource with name='subject', valueReference",
+        example={
+            "resourceType": "Parameters",
+            "parameter": [
+                {"name": "subject", "valueReference": {"reference": "Patient/example"}}
+            ],
+        },
+    ),
+    persist: bool = Query(
+        True,
+        description="Persist resulting Observations as a transaction (default true). "
+                    "If false, returns the transaction Bundle for caller-side persistence.",
+    ),
+    service: ScoringExtractService = Depends(get_scoring_extract_service),
+):
+    """
+    Compute scoring CQL for a subject + produce Observation resource(s).
+
+    Bridges the SDC-flow gap where HAPI CR doesn't auto-evaluate
+    sdc-calculatedExpression. Internally: invokes the bound scoring Library
+    via $evaluate, builds Observations from the result with proper LOINC
+    codes and (where applicable) Observation.interpretation for severity
+    bands, optionally persists them as a transaction.
+    """
+    # Extract subject from Parameters body
+    subject_reference = None
+    for p in body.get("parameter", []):
+        if p.get("name") == "subject":
+            ref = p.get("valueReference", {}).get("reference") or p.get("valueString")
+            if ref:
+                subject_reference = ref
+                break
+
+    if not subject_reference:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'subject' parameter (Patient reference)",
+        )
+
+    try:
+        bundle = await service.compute_and_extract(
+            questionnaire_id=questionnaire_id,
+            subject_reference=subject_reference,
+            persist=persist,
+        )
+        logger.info(
+            f"$compute-and-extract: questionnaire={questionnaire_id} "
+            f"subject={subject_reference} persist={persist} "
+            f"entries={len(bundle.get('entry', []))}"
+        )
+        return bundle
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.exception(
+            f"$compute-and-extract failed for q={questionnaire_id} subject={subject_reference}"
+        )
         raise HTTPException(status_code=500, detail=str(e))
