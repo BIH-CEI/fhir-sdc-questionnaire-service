@@ -72,7 +72,7 @@ services:
       # Note: Environment var approach would be: hapi.fhir.cql_enabled: true (deprecated)
       # Using application.yaml for better configuration management
     ports:
-      - "8095:8080"
+      - "${HAPI_PORT:-8095}:8080"
     depends_on:
       db:
         condition: service_healthy

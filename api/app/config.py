@@ -8,7 +8,11 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "SDC Form Manager API"
-    app_version: str = "1.0.0"
+    # SemVer of THIS service (the form-manager runtime: HAPI image + FastAPI
+    # sidecar). Decoupled from the bundled FHIR content version — that lives
+    # in Dockerfile.form-manager's PRO_LIBRARY_VERSION and is recorded as a
+    # separate Docker label. Runtime and content evolve independently.
+    app_version: str = "0.1.0"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     log_level: str = "info"

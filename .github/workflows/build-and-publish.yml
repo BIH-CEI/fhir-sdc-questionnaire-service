@@ -12,7 +12,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/fhir-sdc-form-manager
   MII_PRO_VERSION: "2026.3.0"
-  PRO_LIBRARY_VERSION: "0.1.2"
+  PRO_LIBRARY_VERSION: "0.1.3"
 
 # Runs in parallel with the test workflow (test.yml). Both pipelines share
 # the same buildx GHA cache, so whichever boots second reuses layers and is
@@ -87,7 +87,7 @@ jobs:
           # PRO Library (BIH-CEI provisional) — assert release manifest + PHQ-9 loaded
           PRO_LIB_PHQ9=$(curl -sf "http://localhost:18095/fhir/Questionnaire?url=https://fhir.bih-charite.de/pro-library/Questionnaire/phq-9&version=${PRO_LIBRARY_VERSION}&_summary=count" \
                          | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
-          PRO_LIB_MANIFEST=$(curl -sf "http://localhost:18095/fhir/Library?url=https://fhir.bih-charite.de/pro-library/Library/release-0-1-2&version=${PRO_LIBRARY_VERSION}&_summary=count" \
+          PRO_LIB_MANIFEST=$(curl -sf "http://localhost:18095/fhir/Library?url=https://fhir.bih-charite.de/pro-library/Library/release-0-1-3&version=${PRO_LIBRARY_VERSION}&_summary=count" \
                              | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
           echo "PRO Library ${PRO_LIBRARY_VERSION}: PHQ-9=$PRO_LIB_PHQ9, release manifest=$PRO_LIB_MANIFEST"
 
