@@ -21,7 +21,7 @@ set -euo pipefail
 HAPI_URL="${HAPI_URL:-http://localhost:8080/fhir}"
 PKGS_DIR="${PKGS_DIR:-/data/hapi/local-packages}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-180}"
-LOAD_TYPES=(Questionnaire Library Provenance ImplementationGuide ObservationDefinition)
+LOAD_TYPES=(Questionnaire Library Provenance ImplementationGuide ObservationDefinition TestScript)
 
 log() { echo "[load-instance-resources] $*" >&2; }
 
@@ -55,6 +55,7 @@ for tarball in "${PKGS_DIR}"/*.tgz; do
     count_Provenance=0
     count_ImplementationGuide=0
     count_ObservationDefinition=0
+    count_TestScript=0
 
     for jsonfile in "${workdir}/package/"*.json; do
         [ -f "${jsonfile}" ] || continue
@@ -85,6 +86,7 @@ for tarball in "${PKGS_DIR}"/*.tgz; do
                 Provenance)           count_Provenance=$((count_Provenance + 1)) ;;
                 ImplementationGuide)  count_ImplementationGuide=$((count_ImplementationGuide + 1)) ;;
                 ObservationDefinition) count_ObservationDefinition=$((count_ObservationDefinition + 1)) ;;
+                TestScript)           count_TestScript=$((count_TestScript + 1)) ;;
             esac
         else
             log "  WARN: PUT ${rt}/${rid} returned HTTP ${http_code}"
@@ -96,6 +98,7 @@ for tarball in "${PKGS_DIR}"/*.tgz; do
     [ "${count_Provenance}" -gt 0 ]          && log "  Provenance: loaded ${count_Provenance}"
     [ "${count_ImplementationGuide}" -gt 0 ] && log "  ImplementationGuide: loaded ${count_ImplementationGuide}"
     [ "${count_ObservationDefinition}" -gt 0 ] && log "  ObservationDefinition: loaded ${count_ObservationDefinition}"
+    [ "${count_TestScript}" -gt 0 ]          && log "  TestScript: loaded ${count_TestScript}"
     rm -rf "${workdir}"
 done
 

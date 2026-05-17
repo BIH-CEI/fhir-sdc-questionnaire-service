@@ -136,18 +136,38 @@ class TestReleaseManifestIntegrity:
         related = lib.get("relatedArtifact", [])
         assert len(related) >= 1, "Manifest has no relatedArtifact entries — empty release?"
 
+        # Resource types that do not carry a `version` element in R4 are
+        # exempt from the |version pin requirement and are resolved by url
+        # only. (R5 promotes ObservationDefinition to a versioned canonical;
+        # this list shrinks on the R5 migration.)
+        UNVERSIONED_IN_R4 = {"ObservationDefinition"}
+
         failures = []
         for ra in related:
             ref = ra.get("resource", "")
-            if "|" not in ref:
-                failures.append(f"relatedArtifact.resource missing |version: {ref}")
-                continue
-
-            canonical_url, version = ref.rsplit("|", 1)
+            canonical_url = ref.split("|", 1)[0]
             # Resource type sits at the path segment before the id
             # (e.g. https://.../pro-library/Questionnaire/phq-9 → Questionnaire)
             rtype = canonical_url.rsplit("/", 2)[-2]
 
+            if rtype in UNVERSIONED_IN_R4:
+                r = await fhir_server.get(
+                    f"/{rtype}",
+                    params={"url": canonical_url, "_summary": "true"},
+                )
+                total = r.json().get("total", 0) if r.status_code == 200 else -1
+                if total < 1:
+                    failures.append(
+                        f"{rtype}: {canonical_url} not resolvable "
+                        f"(status={r.status_code}, total={total})"
+                    )
+                continue
+
+            if "|" not in ref:
+                failures.append(f"relatedArtifact.resource missing |version: {ref}")
+                continue
+
+            _, version = ref.rsplit("|", 1)
             r = await fhir_server.get(
                 f"/{rtype}",
                 params={"url": canonical_url, "version": version, "_summary": "true"},
@@ -155,7 +175,8 @@ class TestReleaseManifestIntegrity:
             total = r.json().get("total", 0) if r.status_code == 200 else -1
             if total != 1:
                 failures.append(
-                    f"{rtype}: {canonical_url}|{version} not resolvable (status={r.status_code}, total={total})"
+                    f"{rtype}: {canonical_url}|{version} not resolvable "
+                    f"(status={r.status_code}, total={total})"
                 )
 
         assert not failures, (
