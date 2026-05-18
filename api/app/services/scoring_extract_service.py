@@ -1,26 +1,48 @@
 """
-ScoringExtractService — bridges the HAPI CR / SDC gap.
+ScoringExtractService — bridges the HAPI CR / SDC gap, fully generic.
 
-HAPI CR 8.4 evaluates Library/$evaluate (CQL works) but doesn't
-trigger sdc-calculatedExpression evaluation during $populate or
-$extract. Score values therefore never end up in QuestionnaireResponse
-item.answer fields automatically, and the SDC standard flow of
-"$populate → user fills → $extract → Observations" breaks for
-computed/derived items like PHQ-9 total score and PROMIS T-Score.
+HAPI CR 8.4 evaluates Library/$evaluate (CQL works) but doesn't trigger
+sdc-calculatedExpression evaluation during $populate or $extract. The
+SDC flow "$populate → user fills → $extract → Observations" therefore
+breaks for computed items.
 
 This service implements the bridge as a single FastAPI operation:
 
   POST /api/questionnaires/{q_id}/$compute-and-extract
   Body: Parameters { name: "subject", valueReference: Patient/X }
 
-  Internal pipeline:
-    1. Resolve the Library bound to the Questionnaire via cqf-library
-    2. Invoke Library/$evaluate?subject=Patient/X on HAPI
-    3. Find the most recent matching QR (for derivedFrom provenance)
-    4. Build Observations directly from the $evaluate result with proper
-       LOINC codes, valueQuantity, AND interpretation for PHQ-9 severity
-    5. Optionally POST them as a transaction Bundle (persist=true default)
-    6. Return the Bundle (searchset if persisted, transaction if not)
+The service is **fully generic** — it carries NO instrument-specific
+knowledge in code. All scoring metadata lives in the FHIR content:
+
+  - Questionnaire item.code           → Observation.code (LOINC)
+  - Questionnaire sdc-calculatedExpression → which CQL define produces the value
+  - Questionnaire sdc-questionnaire-observationExtract → which items are extracted
+  - ObservationDefinition.qualifiedInterval → Observation.interpretation (severity band)
+
+Adding a new instrument is purely a pro-library change: ship its
+Questionnaire (with the wirings above), its scoring Library, and an
+ObservationDefinition for each emitted LOINC code (with qualifiedInterval
+severity bands where applicable). The sidecar code does not change.
+
+Internal pipeline:
+  1. Read the Questionnaire; resolve scoring Library from cqf-library
+  2. Walk Questionnaire.item, find items with observationExtract = true
+     and a CQL calculatedExpression
+  3. Invoke Library/$evaluate on HAPI (single call returns all defines)
+  4. Find the most recent matching QR (for derivedFrom provenance)
+  5. For each extract-flagged item:
+       a. Get the computed value from $evaluate's parameter named after
+          the item's calculatedExpression.expression
+       b. Look up an ObservationDefinition with the matching code
+          (item.code) on the server
+       c. Build the Observation; walk OD.qualifiedInterval to set
+          Observation.interpretation if a band matches the value
+  6. Optionally POST the resulting Bundle as a transaction
+  7. Return the Bundle
+
+R5 migration note: ObservationDefinition.qualifiedInterval → qualifiedValue,
+and qualifiedInterval.context → qualifiedValue.interpretation. The
+sidecar's _band_for_value helper is the only place that needs to change.
 """
 from datetime import datetime, timezone
 from typing import Optional
@@ -30,42 +52,12 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# Per-Questionnaire registry: which CQL defines map to which Observations.
-# Add a new entry here when a new instrument's CQL Library ships in pro-library
-# with new define names + Observation LOINC codes.
-#
-# Each entry under a Questionnaire id maps a CQL define name → Observation spec.
-# Spec fields:
-#   loinc_code         — LOINC code that goes into Observation.code.coding
-#   loinc_display      — display text for that LOINC code
-#   unit_code          — UCUM code for valueQuantity.code (e.g. '{score}')
-#   interpretation_from — optional CQL define whose value becomes
-#                        Observation.interpretation.text (e.g. severity band)
-SCORE_OBSERVATION_REGISTRY = {
-    "phq-9": {
-        "PHQ9TotalScore": {
-            "loinc_code": "44261-6",
-            "loinc_display": "Patient Health Questionnaire 9 item (PHQ-9) total score [Reported]",
-            "unit_code": "{score}",
-            "interpretation_from": "PHQ9Severity",
-        },
-        "PROMISDepressionTScore": {
-            "loinc_code": "77861-3",
-            "loinc_display": "PROMIS emotional distress - depression - version 1.0 Tscore",
-            "unit_code": "{score}",
-            "interpretation_from": None,  # T-scale self-describing
-        },
-    },
-    # When pro-library adds PROMIS Depression SF-4a (mii-qst-pro-promis-
-    # depression-sf4a), append its entry here with the appropriate CQL define
-    # names and ObservationDefinition codes. The Library itself follows the
-    # same SDC-Flow-A pattern (context Patient + retrieve).
-    "promis-depression-sf4a": {
-        # TODO: fill in once pro-library ships the Library
-        # "PROMISDepressionSF4aRawScore": {...},
-        # "PROMISDepressionSF4aTScore":   {...},
-    },
-}
+# FHIR canonical URLs we care about
+EXT_CQF_LIBRARY = "http://hl7.org/fhir/StructureDefinition/cqf-library"
+EXT_SDC_CALC = "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression"
+EXT_SDC_EXTRACT = "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-observationExtract"
+EXT_SDC_EXTRACT_CAT = "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-observation-extract-category"
+EXT_Q_UNIT = "http://hl7.org/fhir/StructureDefinition/questionnaire-unit"
 
 
 class ScoringExtractService:
@@ -82,96 +74,107 @@ class ScoringExtractService:
         subject_reference: str,
         persist: bool = True,
     ) -> dict:
-        """
-        Orchestrate score-compute + observation-build for a given subject.
+        # 1. Read the Questionnaire (we'll walk its items + read cqf-library)
+        q = await self._get_questionnaire(questionnaire_id)
 
-        Returns a Bundle:
-          - if persist=True: a 'searchset' Bundle of the persisted Observations
-          - if persist=False: a 'transaction' Bundle of the proposed Observations
-            (caller can POST it themselves)
-        """
-        # 1. Resolve the bound scoring Library from the Questionnaire's cqf-library
-        library_id = await self._resolve_scoring_library(questionnaire_id)
+        library_id = self._resolve_scoring_library_id(q)
         if not library_id:
             raise ValueError(
-                f"Questionnaire/{questionnaire_id} has no cqf-library extension; "
-                f"cannot compute scores"
+                f"Questionnaire/{questionnaire_id} has no cqf-library extension"
             )
 
-        # 2. Run CQL evaluation against HAPI CR with Patient context
-        scores_params = await self._invoke_evaluate(library_id, subject_reference)
-        define_values = self._unpack_parameters(scores_params)
+        # 2. Walk items → find extract-flagged ones with a CQL expression
+        extract_items = self._extract_flagged_items(q)
+        if not extract_items:
+            raise ValueError(
+                f"Questionnaire/{questionnaire_id} has no items with both "
+                f"observationExtract=true and sdc-calculatedExpression"
+            )
 
-        # 3. Find the most recent QR for derivedFrom provenance
+        # 3. One $evaluate call returns all CQL defines for this Patient
+        define_values = self._unpack_parameters(
+            await self._invoke_evaluate(library_id, subject_reference)
+        )
+
+        # 4. Provenance — find the most recent matching QR
         qr_reference = await self._find_most_recent_qr(
             questionnaire_id, subject_reference
         )
 
-        # 4. Build Observations from the relevant define values
-        observations = self._build_observations(
-            define_values, subject_reference, qr_reference, questionnaire_id
-        )
+        # 5. Build one Observation per extract-flagged item
+        observations = []
+        for item in extract_items:
+            obs = await self._build_observation(
+                item, define_values, subject_reference, qr_reference
+            )
+            if obs is not None:
+                observations.append(obs)
 
         if not observations:
             raise ValueError(
-                f"No mappable score defines found for Library/{library_id} — "
-                f"either the CQL returned no scoring values or no entry in "
-                f"SCORE_OBSERVATION_REGISTRY[{questionnaire_id!r}] matched the "
-                f"defines. Available defines: {list(define_values.keys())}"
+                f"No Observations could be built — likely no CQL defines "
+                f"matched the items' calculatedExpression names. "
+                f"Available defines: {list(define_values.keys())}"
             )
 
-        # 5. Build the transaction Bundle
+        # 6. Transaction Bundle
         transaction_bundle = {
             "resourceType": "Bundle",
             "type": "transaction",
             "entry": [
-                {
-                    "resource": obs,
-                    "request": {"method": "POST", "url": "Observation"},
-                }
+                {"resource": obs, "request": {"method": "POST", "url": "Observation"}}
                 for obs in observations
             ],
         }
-
         if not persist:
             return transaction_bundle
 
-        # 6. POST the transaction → persist Observations
         response = await self._client.post("/", json=transaction_bundle)
         response.raise_for_status()
-        result_bundle = response.json()
-
-        # HAPI's transaction-response entries carry only response.location
-        # (not the full resource). Pair each location back with the source
-        # Observation we constructed, so the caller gets ready-to-use entries.
-        return self._merge_locations(observations, result_bundle)
+        return self._merge_locations(observations, response.json())
 
     # ─── Internal helpers ──────────────────────────────────────────────────
 
-    async def _resolve_scoring_library(self, questionnaire_id: str) -> Optional[str]:
-        """Walk Questionnaire.extension[cqf-library] → return Library id."""
-        resp = await self._client.get(f"/Questionnaire/{questionnaire_id}")
-        resp.raise_for_status()
-        q = resp.json()
+    async def _get_questionnaire(self, qid: str) -> dict:
+        r = await self._client.get(f"/Questionnaire/{qid}")
+        r.raise_for_status()
+        return r.json()
+
+    @staticmethod
+    def _resolve_scoring_library_id(q: dict) -> Optional[str]:
         for ext in q.get("extension", []):
-            if ext.get("url") == "http://hl7.org/fhir/StructureDefinition/cqf-library":
-                # valueCanonical is a URL ending in /Library/{id} (optionally |version)
+            if ext.get("url") == EXT_CQF_LIBRARY:
                 canonical = ext.get("valueCanonical", "")
-                slug = canonical.split("|", 1)[0].rstrip("/").rsplit("/", 1)[-1]
-                if slug:
-                    return slug
+                return canonical.split("|", 1)[0].rstrip("/").rsplit("/", 1)[-1] or None
         return None
 
+    @staticmethod
+    def _extract_flagged_items(q: dict) -> list:
+        """Return items with observationExtract=true AND a sdc-calculatedExpression."""
+        flagged = []
+        for item in q.get("item", []):
+            has_extract = False
+            calc_expression = None
+            for ext in item.get("extension", []):
+                if ext.get("url") == EXT_SDC_EXTRACT and ext.get("valueBoolean") is True:
+                    has_extract = True
+                elif ext.get("url") == EXT_SDC_CALC:
+                    ve = ext.get("valueExpression", {})
+                    if ve.get("language", "").startswith("text/cql"):
+                        calc_expression = ve.get("expression")
+            if has_extract and calc_expression and item.get("code"):
+                flagged.append({"item": item, "cql_expression": calc_expression})
+        return flagged
+
     async def _invoke_evaluate(self, library_id: str, subject: str) -> dict:
-        resp = await self._client.get(
+        r = await self._client.get(
             f"/Library/{library_id}/$evaluate", params={"subject": subject}
         )
-        resp.raise_for_status()
-        return resp.json()
+        r.raise_for_status()
+        return r.json()
 
     @staticmethod
     def _unpack_parameters(parameters: dict) -> dict:
-        """Parameters resource → flat dict {define_name: value}."""
         out = {}
         for p in parameters.get("parameter", []):
             name = p.get("name")
@@ -181,156 +184,155 @@ class ScoringExtractService:
                     break
         return out
 
-    async def _find_most_recent_qr(
-        self, questionnaire_id: str, subject: str
-    ) -> Optional[str]:
-        """Return 'QuestionnaireResponse/{id}' for derivedFrom; None if not found."""
-        resp = await self._client.get(
+    async def _find_most_recent_qr(self, qid: str, subject: str) -> Optional[str]:
+        r = await self._client.get(
             "/QuestionnaireResponse",
-            params={
-                "subject": subject,
-                "_sort": "-authored",
-                "_count": "1",
-            },
+            params={"subject": subject, "_sort": "-authored", "_count": "5"},
         )
-        if resp.status_code != 200:
+        if r.status_code != 200:
             return None
-        bundle = resp.json()
-        for entry in bundle.get("entry", []):
+        for entry in r.json().get("entry", []):
             qr = entry.get("resource", {})
-            q_ref = qr.get("questionnaire", "")
-            # Match by URL containing the Questionnaire id (version-agnostic)
-            if questionnaire_id in q_ref:
+            if qid in qr.get("questionnaire", ""):
                 return f"QuestionnaireResponse/{qr['id']}"
         return None
 
-    @staticmethod
-    def _build_observations(
+    async def _build_observation(
+        self,
+        flagged: dict,
         define_values: dict,
         subject_reference: str,
         qr_reference: Optional[str],
-        questionnaire_id: str,
-    ) -> list:
-        registry = SCORE_OBSERVATION_REGISTRY.get(questionnaire_id, {})
-        if not registry:
-            raise ValueError(
-                f"No Observation-mapping registry entry for Questionnaire "
-                f"{questionnaire_id!r}. Add one in SCORE_OBSERVATION_REGISTRY."
-            )
+    ) -> Optional[dict]:
+        item = flagged["item"]
+        expr_name = flagged["cql_expression"]
+        if expr_name not in define_values:
+            return None
+        value = define_values[expr_name]
+        if value is None:
+            return None
 
+        item_code = item.get("code", [{}])[0]
+        loinc_code = item_code.get("code")
+        unit = self._get_unit(item)
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        observations = []
 
-        for define_name, spec in registry.items():
-            if define_name not in define_values:
-                continue
-            raw_value = define_values[define_name]
-            if raw_value is None:
-                continue
-
-            # Preserve native numeric type so Integer scores serialise as `14`
-            # (not `14.0`). FHIR Quantity.value is `decimal` and accepts either;
-            # but consumers reasonably prefer integers for items that are
-            # conceptually integers (PHQ-9 sum is 0..27 int). The CQL define
-            # already returns the right type via valueInteger / valueDecimal.
-            value_quantity = {
-                "value": raw_value,
-                "system": "http://unitsofmeasure.org",
-                "code": spec["unit_code"],
-            }
-
-            obs = {
-                "resourceType": "Observation",
-                "status": "final",
-                "category": [
-                    {
-                        "coding": [
-                            {
-                                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
-                                "code": "survey",
-                                "display": "Survey",
-                            }
-                        ]
-                    }
-                ],
-                "code": {
+        obs = {
+            "resourceType": "Observation",
+            "status": "final",
+            "category": [
+                {
                     "coding": [
                         {
-                            "system": "http://loinc.org",
-                            "code": spec["loinc_code"],
-                            "display": spec["loinc_display"],
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "survey",
+                            "display": "Survey",
                         }
                     ]
-                },
-                "subject": {"reference": subject_reference},
-                "effectiveDateTime": now,
-                "issued": now,
-                "valueQuantity": value_quantity,
-            }
+                }
+            ],
+            "code": {"coding": [item_code]},
+            "subject": {"reference": subject_reference},
+            "effectiveDateTime": now,
+            "issued": now,
+            "valueQuantity": {
+                "value": value,
+                "system": "http://unitsofmeasure.org",
+                "code": unit,
+            },
+        }
+        if qr_reference:
+            obs["derivedFrom"] = [{"reference": qr_reference}]
 
-            # Interpretation (severity band) for items configured for it.
-            # Uses per-Questionnaire CodeSystem URL so each instrument gets
-            # its own well-namespaced severity vocabulary.
-            interp_define = spec.get("interpretation_from")
-            if interp_define and interp_define in define_values:
-                band_text = define_values[interp_define]
-                if band_text:
-                    severity_cs = (
-                        f"https://fhir.bih-charite.de/pro-library/"
-                        f"CodeSystem/{questionnaire_id}-severity"
-                    )
-                    obs["interpretation"] = [
-                        {
-                            "text": str(band_text),
-                            "coding": [
-                                {
-                                    "system": severity_cs,
-                                    "code": str(band_text).replace(" ", "-"),
-                                    "display": str(band_text),
-                                }
-                            ],
-                        }
-                    ]
+        # Look up the ObservationDefinition on the server for this LOINC code
+        # and use its qualifiedInterval to set Observation.interpretation.
+        if loinc_code:
+            interp = await self._interpretation_from_obsdef(loinc_code, value)
+            if interp:
+                obs["interpretation"] = [interp]
 
-            if qr_reference:
-                obs["derivedFrom"] = [{"reference": qr_reference}]
-
-            observations.append(obs)
-
-        return observations
+        return obs
 
     @staticmethod
-    def _merge_locations(
-        source_observations: list, transaction_response: dict
-    ) -> dict:
+    def _get_unit(item: dict) -> str:
+        for ext in item.get("extension", []):
+            if ext.get("url") == EXT_Q_UNIT:
+                vc = ext.get("valueCoding", {})
+                if vc.get("code"):
+                    return vc["code"]
+        return "1"  # UCUM "unity" — fallback
+
+    async def _interpretation_from_obsdef(
+        self, loinc_code: str, value
+    ) -> Optional[dict]:
         """
-        Pair each constructed Observation with the persisted location HAPI
-        returned (entry[i].response.location like 'Observation/405/_history/1').
-        Strip _history off so fullUrl is the bare resource reference.
-        Backfills Observation.id from the location.
+        Find an ObservationDefinition whose code matches the LOINC, then walk
+        its qualifiedInterval[] looking for an *absolute* band whose range
+        contains `value`. Return the band's context CodeableConcept as the
+        Observation.interpretation entry.
         """
+        try:
+            r = await self._client.get(
+                "/ObservationDefinition", params={"code": loinc_code, "_count": "10"}
+            )
+            r.raise_for_status()
+        except httpx.HTTPError:
+            return None
+
+        for entry in r.json().get("entry", []):
+            od = entry.get("resource", {})
+            band = self._band_for_value(od.get("qualifiedInterval", []), value)
+            if band is not None:
+                return band
+        return None
+
+    @staticmethod
+    def _band_for_value(qualified_intervals: list, value) -> Optional[dict]:
+        """
+        Walk qualifiedInterval[]; return a CodeableConcept suitable for
+        Observation.interpretation if any *absolute* band's range contains
+        `value`. Falls back to the band's `condition` text if no
+        `context.coding` is present.
+
+        R5 note: in R5 this would walk qualifiedValue[] and prefer
+        qualifiedValue.interpretation directly (already CodeableConcept).
+        """
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+
+        for qi in qualified_intervals:
+            if qi.get("category") != "absolute":
+                continue
+            rng = qi.get("range", {})
+            low = rng.get("low", {}).get("value")
+            high = rng.get("high", {}).get("value")
+            if low is not None and v < float(low):
+                continue
+            if high is not None and v > float(high):
+                continue
+            context = qi.get("context") or {}
+            if context.get("coding") or context.get("text"):
+                concept = dict(context)
+                if "text" not in concept and qi.get("condition"):
+                    concept["text"] = qi["condition"]
+                return concept
+        return None
+
+    @staticmethod
+    def _merge_locations(observations: list, transaction_response: dict) -> dict:
         response_entries = transaction_response.get("entry", [])
-        merged_entries = []
-        for i, obs in enumerate(source_observations):
+        merged = []
+        for i, obs in enumerate(observations):
             location = (
                 response_entries[i].get("response", {}).get("location", "")
                 if i < len(response_entries)
                 else ""
             )
-            # 'Observation/405/_history/1' → ('Observation/405', '405')
-            bare_ref = location.split("/_history/")[0] if location else None
-            obs_id = bare_ref.rsplit("/", 1)[-1] if bare_ref else None
+            bare = location.split("/_history/")[0] if location else None
+            obs_id = bare.rsplit("/", 1)[-1] if bare else None
             if obs_id:
                 obs["id"] = obs_id
-            merged_entries.append(
-                {
-                    "fullUrl": bare_ref,
-                    "resource": obs,
-                }
-            )
-
-        return {
-            "resourceType": "Bundle",
-            "type": "collection",
-            "entry": merged_entries,
-        }
+            merged.append({"fullUrl": bare, "resource": obs})
+        return {"resourceType": "Bundle", "type": "collection", "entry": merged}

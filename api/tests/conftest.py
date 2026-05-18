@@ -453,10 +453,37 @@ PRO_QUESTIONNAIRE_CANONICALS = {
 # https://fhir.bih-charite.de/pro-library and are produced by
 # https://github.com/BIH-CEI/pro-library (FSH/SUSHI).
 PRO_LIBRARY_NAMESPACE = "https://fhir.bih-charite.de/pro-library"
-PRO_LIBRARY_VERSION = "0.1.2"
+
+
+def _load_pro_library_version() -> str:
+    """Single source of truth: PRO_LIBRARY_VERSION env, else versions.env at
+    repo root, else fail loudly. Never hardcode the version in tests."""
+    env = os.getenv("PRO_LIBRARY_VERSION")
+    if env:
+        return env
+    versions_env = os.path.join(
+        os.path.dirname(__file__), "..", "..", "versions.env"
+    )
+    if os.path.isfile(versions_env):
+        with open(versions_env) as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("PRO_LIBRARY_VERSION="):
+                    return line.split("=", 1)[1].strip()
+    raise RuntimeError(
+        "PRO_LIBRARY_VERSION not set and versions.env not found / lacks entry"
+    )
+
+
+PRO_LIBRARY_VERSION = _load_pro_library_version()
 PRO_LIBRARY_CANONICALS = {
     "phq_9":           f"{PRO_LIBRARY_NAMESPACE}/Questionnaire/phq-9",
-    "release_manifest": f"{PRO_LIBRARY_NAMESPACE}/Library/release-0-1-2",
+    # Release-manifest id mirrors the version with dots replaced by dashes,
+    # matching the pro-library FSH naming convention.
+    "release_manifest": (
+        f"{PRO_LIBRARY_NAMESPACE}/Library/"
+        f"release-{PRO_LIBRARY_VERSION.replace('.', '-')}"
+    ),
 }
 
 

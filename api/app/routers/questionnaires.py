@@ -9,6 +9,7 @@ from app.services import (
 )
 from app.services.localization_service import LocalizationService
 from app.config import get_settings
+import httpx
 import logging
 
 logger = logging.getLogger(__name__)
@@ -277,7 +278,9 @@ async def package_questionnaire_resource(
     ),
     include_dependencies: bool = Query(
         True,
-        description="Include transitive dependencies"
+        alias="include-dependencies",
+        description="Include transitive dependencies — matches the SDC "
+        "`$package` parameter name (hyphenated, per the OperationDefinition).",
     ),
     package_service: PackageService = Depends(get_package_service)
 ):
@@ -333,7 +336,9 @@ async def package_questionnaire_by_url(
     ),
     include_dependencies: bool = Query(
         True,
-        description="Include transitive dependencies"
+        alias="include-dependencies",
+        description="Include transitive dependencies — matches the SDC "
+        "`$package` parameter name (hyphenated, per the OperationDefinition).",
     ),
     package_service: PackageService = Depends(get_package_service)
 ):
@@ -374,7 +379,9 @@ async def package_questionnaire_by_id(
     questionnaire_id: str = Path(..., description="Questionnaire ID"),
     include_dependencies: bool = Query(
         True,
-        description="Include transitive dependencies (ValueSets, CodeSystems, Libraries)"
+        alias="include-dependencies",
+        description="Include transitive dependencies (ValueSets, CodeSystems, "
+        "Libraries) — matches the SDC `$package` parameter name.",
     ),
     package_service: PackageService = Depends(get_package_service)
 ):
@@ -598,9 +605,12 @@ async def localize_questionnaire_by_url(
 #   - persist=true (default): 'collection' Bundle of the persisted Observations
 #   - persist=false:           'transaction' Bundle the caller can POST themselves
 #
-# Observations are constructed per the SCORE_OBSERVATION_REGISTRY in
-# scoring_extract_service.py — one entry per Questionnaire id, mapping CQL
-# defines to LOINC codes + optional severity interpretation.
+# Observations are constructed generically from FHIR content (no per-
+# instrument code): Questionnaire.item.code → Observation.code (LOINC),
+# the item's calculatedExpression names the CQL define that produces the
+# value, and ObservationDefinition.qualifiedInterval on the server supplies
+# severity-band interpretation. Adding a new instrument is purely a pro-
+# library change. See scoring_extract_service.py for details.
 
 @router.post("/{questionnaire_id}/$compute-and-extract", response_model=dict)
 async def compute_and_extract(
@@ -661,8 +671,33 @@ async def compute_and_extract(
 
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except httpx.HTTPStatusError as e:
+        # Translate upstream FHIR errors so a missing Questionnaire becomes 404
+        # instead of 500. Anything else upstream is surfaced as-is.
+        upstream = e.response.status_code if e.response is not None else 502
+        detail = f"Upstream FHIR server returned {upstream}: {str(e)[:200]}"
+        if upstream == 404:
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=502, detail=detail)
     except Exception as e:
         logger.exception(
             f"$compute-and-extract failed for q={questionnaire_id} subject={subject_reference}"
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── FHIR routing fix: literal `/$<op>` routes must match before wildcards ──
+#
+# FHIR R4 reserves `$` for operations, and the `id` datatype regex
+# ([A-Za-z0-9\-\.]{1,64}) makes `$package` a structurally-invalid id.
+# Starlette/FastAPI dispatches in registration order, so without this
+# re-sort, `/{questionnaire_id}` would catch `/$package` first and our
+# sidecar would forward `$package` to HAPI as if it were a Questionnaire id.
+# Stable sort: routes whose first non-prefix segment is a literal (not
+# `{wildcard}`) come first. CRMI, SDC and FHIR all rely on this.
+def _wildcard_first(route) -> bool:
+    parts = route.path[len(router.prefix):].lstrip("/").split("/", 1)
+    return bool(parts and parts[0].startswith("{"))
+
+
+router.routes.sort(key=_wildcard_first)

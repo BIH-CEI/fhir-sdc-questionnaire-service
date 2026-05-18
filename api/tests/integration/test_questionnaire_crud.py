@@ -65,26 +65,26 @@ class TestQuestionnaireCreate:
 
         assert response.status_code == 400
 
+    @pytest.mark.skip(
+        reason="HAPI request-time validation is intentionally disabled in this "
+        "stack (see hapi-config/application.yaml + docker-compose.test.yml). "
+        "Reason: MII PRO upstream Questionnaires and our derivedFrom overlays "
+        "have known non-fatal validation issues (translation-extension placement "
+        "etc.) that would block IG bootstrap loading. Validation belongs at "
+        "publication time (Reference Validation Service) and consumer-side "
+        "write time, not on every PUT against this server. A future schema-"
+        "level pre-check in the FastAPI sidecar (pydantic) would restore "
+        "this guarantee without forcing HAPI-level validation back on."
+    )
     async def test_create_questionnaire_missing_required_field(self, api_client):
-        """
-        Test: Missing required fields causes HAPI validation error
-
-        Given: Questionnaire missing 'status' field
-        When: POST to /api/questionnaires
-        Then: Returns 500 (HAPI validation error)
-        """
+        """Missing required fields should be rejected — see skip reason."""
         invalid_questionnaire = {
             "resourceType": "Questionnaire",
-            # Missing 'status' - required field
             "item": [{"linkId": "1", "text": "Question", "type": "string"}]
         }
-
         response = await api_client.post(
-            "/api/questionnaires/",
-            json=invalid_questionnaire
+            "/api/questionnaires/", json=invalid_questionnaire
         )
-
-        # HAPI validation interceptor should reject (returns 422)
         assert response.status_code in [400, 422, 500]
 
 
