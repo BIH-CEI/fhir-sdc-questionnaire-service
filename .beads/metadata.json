@@ -1,10 +1,7 @@
 {
   "database": "dolt",
   "backend": "dolt",
-  "dolt_mode": "server",
-  "dolt_server_host": "127.0.0.1",
-  "dolt_database": "fsqs",
-  "project_id": "e98d07e5-4569-47e7-ac6c-f90604b8c601",
-  "dolt_host": "127.0.0.1",
-  "dolt_user": "root"
+  "dolt_mode": "embedded",
+  "dolt_database": "fhir_sdc_questionnaire_service",
+  "project_id": "5ac64bec-2ec8-42bf-ad73-92e47ad1dcb2"
 }
