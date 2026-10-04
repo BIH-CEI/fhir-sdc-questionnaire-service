@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PRO Library — LHC-Forms SDC Test Harness</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- LHC-Forms widget (lforms) + its peer deps, loaded from jsDelivr.
+       Pin to a known-stable major; bump deliberately if you want newer
+       SDC features. The widget exposes `LForms` on window. -->
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/lhc-common.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/assets/lib/zone.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/fhir/R4/lformsFHIR.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/runtime.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/polyfills.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/main.js"></script>
+
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem; background: #fafafa; }
+    h1 { margin-top: 0; font-size: 1.2rem; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem;
+               padding: 0.75rem; background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; }
+    .toolbar label { font-size: 0.85rem; color: #444; }
+    .toolbar input, .toolbar select { padding: 0.35rem 0.5rem; font-size: 0.85rem;
+                                       border: 1px solid #ccc; border-radius: 4px; min-width: 18rem; }
+    .toolbar button { padding: 0.4rem 0.85rem; font-size: 0.85rem; cursor: pointer;
+                      background: #1565c0; color: #fff; border: 0; border-radius: 4px; }
+    .toolbar button.secondary { background: #555; }
+    .toolbar button:disabled { background: #aaa; cursor: not-allowed; }
+    #status { margin: 0.5rem 0; font-size: 0.85rem; color: #555; min-height: 1.2em; }
+    #form-container { background: #fff; padding: 1rem; border: 1px solid #e0e0e0; border-radius: 6px; }
+    pre { background: #f4f4f4; padding: 0.75rem; border-radius: 4px; overflow: auto; max-height: 24rem; }
+    details { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>PRO Library — LHC-Forms SDC Test Harness</h1>
+
+  <div class="toolbar">
+    <label for="server">FHIR server</label>
+    <input id="server" value="http://localhost:8083/fhir" />
+    <label for="qid">Questionnaire</label>
+    <select id="qid"></select>
+    <button id="load">Load + $populate</button>
+    <button id="extract" class="secondary" disabled>$extract</button>
+    <button id="submit" class="secondary" disabled>Submit QR</button>
+  </div>
+
+  <div id="status">Ready. Pick a server, refresh the list, choose a Questionnaire.</div>
+
+  <div id="form-container">
+    <wc-lhc-form id="lhc-form"></wc-lhc-form>
+  </div>
+
+  <details>
+    <summary>Raw QuestionnaireResponse (current widget state)</summary>
+    <pre id="raw-qr">—</pre>
+  </details>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const setStatus = (msg, isError = false) => {
+      const el = $('#status');
+      el.textContent = msg;
+      el.style.color = isError ? '#b71c1c' : '#555';
+    };
+
+    async function fhirGet(base, path) {
+      const r = await fetch(`${base}${path}`, { headers: { Accept: 'application/fhir+json' } });
+      if (!r.ok) throw new Error(`${path} → ${r.status} ${r.statusText}`);
+      return r.json();
+    }
+
+    async function refreshQuestionnaires() {
+      const base = $('#server').value.replace(/\/$/, '');
+      setStatus('Fetching Questionnaire list…');
+      try {
+        // Pull a generous slice; the consumer test set is small.
+        const bundle = await fhirGet(base, '/Questionnaire?_count=200&_elements=id,title,url,version');
+        const sel = $('#qid');
+        sel.innerHTML = '';
+        (bundle.entry || []).forEach((e) => {
+          const q = e.resource;
+          const opt = document.createElement('option');
+          opt.value = q.id;
+          opt.textContent = `${q.title || q.id}  (${q.url || '—'} | v${q.version || '?'})`;
+          opt.dataset.url = q.url || '';
+          sel.appendChild(opt);
+        });
+        setStatus(`Loaded ${sel.options.length} Questionnaire(s).`);
+      } catch (e) {
+        setStatus(`Failed to list Questionnaires: ${e.message}`, true);
+      }
+    }
+
+    async function loadAndPopulate() {
+      const base = $('#server').value.replace(/\/$/, '');
+      const id = $('#qid').value;
+      if (!id) { setStatus('No Questionnaire selected.', true); return; }
+
+      setStatus(`Fetching Questionnaire/${id}…`);
+      let q;
+      try {
+        q = await fhirGet(base, `/Questionnaire/${id}`);
+      } catch (e) { setStatus(`GET Questionnaire failed: ${e.message}`, true); return; }
+
+      // Attempt server-side $populate. If the server lacks CR or the
+      // Questionnaire has no populator metadata, fall back to rendering
+      // an empty form — that's still a valid SDC consumer flow.
+      let qr = null;
+      try {
+        setStatus('Calling $populate on the consumer HAPI…');
+        const r = await fetch(`${base}/Questionnaire/${id}/$populate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/fhir+json' },
+          body: JSON.stringify({ resourceType: 'Parameters', parameter: [] }),
+        });
+        if (r.ok) {
+          const out = await r.json();
+          // $populate returns a Parameters with a "response" part holding the QR.
+          const part = (out.parameter || []).find((p) => p.name === 'response' || p.name === 'questionnaire-response');
+          qr = part?.resource || null;
+          setStatus(qr ? '$populate returned a QuestionnaireResponse.' : '$populate returned no QR; rendering empty form.');
+        } else {
+          setStatus(`$populate returned ${r.status}; rendering empty form.`);
+        }
+      } catch (e) {
+        setStatus(`$populate failed (${e.message}); rendering empty form.`);
+      }
+
+      // Convert Questionnaire (and QR if present) to LForms format and render.
+      try {
+        const lf = LForms.Util.convertFHIRQuestionnaireToLForms(q, 'R4');
+        let merged = lf;
+        if (qr) {
+          merged = LForms.Util.mergeFHIRDataIntoLForms('QuestionnaireResponse', qr, lf, 'R4');
+        }
+        await LForms.Util.addFormToPage(merged, 'lhc-form');
+        $('#extract').disabled = false;
+        $('#submit').disabled  = false;
+        updateRawQR();
+      } catch (e) {
+        setStatus(`Render failed: ${e.message}`, true);
+      }
+    }
+
+    function currentQR() {
+      return LForms.Util.getFormFHIRData('QuestionnaireResponse', 'R4', 'lhc-form');
+    }
+
+    function updateRawQR() {
+      try { $('#raw-qr').textContent = JSON.stringify(currentQR(), null, 2); }
+      catch (e) { $('#raw-qr').textContent = `(no form rendered) ${e.message}`; }
+    }
+
+    async function submitQR() {
+      const base = $('#server').value.replace(/\/$/, '');
+      const qr = currentQR();
+      qr.status = qr.status || 'completed';
+      setStatus('POSTing QuestionnaireResponse…');
+      try {
+        const r = await fetch(`${base}/QuestionnaireResponse`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/fhir+json' },
+          body: JSON.stringify(qr),
+        });
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        const saved = await r.json();
+        setStatus(`Saved QuestionnaireResponse/${saved.id}.`);
+      } catch (e) {
+        setStatus(`Submit failed: ${e.message}`, true);
+      }
+    }
+
+    async function extract() {
+      const base = $('#server').value.replace(/\/$/, '');
+      const qr = currentQR();
+      qr.status = qr.status || 'completed';
+      setStatus('Calling $extract on the consumer HAPI…');
+      try {
+        const r = await fetch(`${base}/QuestionnaireResponse/$extract`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/fhir+json' },
+          body: JSON.stringify({
+            resourceType: 'Parameters',
+            parameter: [{ name: 'questionnaire-response', resource: qr }],
+          }),
+        });
+        const text = await r.text();
+        if (!r.ok) throw new Error(`${r.status} — ${text.slice(0, 300)}`);
+        setStatus('$extract OK — see raw output below.');
+        $('#raw-qr').textContent = text;
+      } catch (e) {
+        setStatus(`$extract failed: ${e.message}`, true);
+      }
+    }
+
+    $('#load').addEventListener('click', loadAndPopulate);
+    $('#submit').addEventListener('click', submitQR);
+    $('#extract').addEventListener('click', extract);
+    $('#server').addEventListener('change', refreshQuestionnaires);
+
+    // Auto-list on page load.
+    window.addEventListener('load', refreshQuestionnaires);
+  </script>
+</body>
+</html>

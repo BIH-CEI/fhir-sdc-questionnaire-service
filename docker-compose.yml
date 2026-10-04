@@ -88,6 +88,36 @@ services:
     # No bind-mounts: application.yaml + MII PRO tarball are baked into the image
     # via Dockerfile.form-manager. Lucene index is rebuilt on each container start.
 
+  # Producer-side instance-resource loader.
+  #
+  # HAPI's PackageInstallerSvc only auto-installs the canonical resource
+  # types (NamingSystem / CodeSystem / ValueSet / StructureDefinition /
+  # ConceptMap / SearchParameter / Subscription). Everything else in the
+  # baked-in tarballs — Questionnaire, Library (incl. the CRMI release
+  # manifest), Provenance, ImplementationGuide, ObservationDefinition,
+  # TestScript — must be PUT after boot. CI already does this; this
+  # service mirrors it for local dev so that the producer FHIR endpoint
+  # exposes the full PRO Library content (including Library/release-0-1-3)
+  # that downstream CRMI consumers can pull via standard FHIR search.
+  pro-library-loader:
+    image: alpine:3.20
+    container_name: pro-library-loader
+    depends_on:
+      - hapi-fhir
+    networks:
+      - fhir-network
+    volumes:
+      - ./hapi-scripts:/scripts:ro
+      - ./local-packages:/pkgs:ro
+    environment:
+      HAPI_URL: http://hapi-fhir:8080/fhir
+      PKGS_DIR: /pkgs
+      WAIT_TIMEOUT: "240"
+    command: >
+      sh -c "apk add --no-cache bash curl jq tar &&
+             bash /scripts/load-instance-resources.sh"
+    restart: "no"
+
   # MII PRO Package Installer - Runs once after HAPI startup
   mii-pro-installer:
     image: python:3.11-slim

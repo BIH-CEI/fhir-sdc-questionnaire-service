@@ -1,0 +1,172 @@
+version: '3.8'
+
+# Downstream consumer test network.
+#
+# Goal: prove that the PRO Library + MII PRO + SDC content travel cleanly
+# from the producer (Form Manager) image into a separate HAPI instance with
+# Clinical Reasoning enabled, and that $populate / $extract work on the
+# consumer side. Bundles a self-hosted LHC-Forms SDC renderer so the whole
+# loop (fetch Questionnaire → render → $populate → submit → $extract) can
+# be exercised locally without exposing anything to the public internet.
+#
+# Run alongside the main compose:
+#   docker compose -f docker-compose.yml -f docker-compose.consumer-test.yml up -d
+#
+# Endpoints:
+#   Producer HAPI (Form Manager): http://localhost:${HAPI_PORT:-8095}/fhir
+#   Consumer HAPI (CR-enabled):   http://localhost:8083/fhir
+#   LHC-Forms renderer:           http://localhost:3004
+#
+# Ports registered in ~/.claude/ports.yaml (consumer-hapi, lhc-forms-sdc).
+#
+# The consumer reuses the same image as the producer on purpose: the image
+# already has SDC + MII PRO + PRO Library + CR baked in, which is exactly
+# what a downstream site would receive via the CRMI release manifest. The
+# distribution mechanism (NPM tarball vs $crmi-package vs git) is a
+# separate concern — this test isolates the runtime conformance question.
+
+services:
+  # Dedicated Postgres for the consumer — kept separate so the consumer's
+  # state can be wiped without touching producer data.
+  consumer-db:
+    image: postgres:15-alpine
+    container_name: consumer-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - consumer_postgres_data:/var/lib/postgresql/data
+    networks:
+      - fhir-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Consumer HAPI — same image as producer, headless (no FastAPI sidecar).
+  # Different container name, different DB, different host port.
+  consumer-hapi:
+    image: ${FORM_MANAGER_IMAGE:-fhir-sdc-form-manager:local}
+    container_name: consumer-hapi
+    env_file:
+      - versions.env
+      - .env
+    environment:
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/data/hapi/
+
+      hapi.fhir.cr.enabled: true
+
+      spring.datasource.url: jdbc:postgresql://consumer-db:5432/${POSTGRES_DB}
+      spring.datasource.username: ${POSTGRES_USER}
+      spring.datasource.password: ${POSTGRES_PASSWORD}
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+
+      hapi.fhir.fhir_version: ${FHIR_VERSION}
+
+      hapi.fhir.enable_index_missing_fields: true
+      hapi.fhir.auto_create_placeholder_reference_targets: true
+
+      hapi.fhir.reuse_cached_search_results_millis: 60000
+      hapi.fhir.default_page_size: ${HAPI_DEFAULT_PAGE_SIZE}
+      hapi.fhir.max_page_size: ${HAPI_MAX_PAGE_SIZE}
+
+      # CORS: open for the locally-hosted LHC-Forms widget on localhost:3001.
+      # HAPI_CORS_ALLOWED_ORIGIN in .env defaults to "*", which is fine for
+      # this isolated test network.
+      hapi.fhir.cors.allowed_origin: ${HAPI_CORS_ALLOWED_ORIGIN}
+      hapi.fhir.cors.allow_credentials: ${HAPI_CORS_ALLOW_CREDENTIALS}
+
+      hapi.fhir.narrative_enabled: true
+
+      # Validation off on read/write — matches producer policy: validation
+      # belongs at publication time, not on the consumer's hot path.
+      hapi.fhir.validation_enabled: false
+      hapi.fhir.validation_server_url: http://consumer-hapi:8080/fhir
+    ports:
+      - "8083:8080"
+    depends_on:
+      consumer-db:
+        condition: service_healthy
+    networks:
+      - fhir-network
+
+  # Mirrors the producer's mii-pro-installer: uses HAPI's $install-package
+  # to pull dependency tarballs (hl7.fhir.r4.core, hl7.terminology,
+  # hl7.fhir.uv.sdc, mii.meta) from Simplifier. Required so the consumer
+  # HAPI can resolve profile references when CR runs $populate / $extract.
+  consumer-mii-pro-installer:
+    image: python:3.11-slim
+    container_name: consumer-mii-pro-installer
+    depends_on:
+      - consumer-hapi
+    networks:
+      - fhir-network
+    volumes:
+      - ./scripts:/scripts
+    environment:
+      HAPI_BASE_URL: http://consumer-hapi:8080/fhir
+    command: >
+      sh -c "pip install -q requests &&
+             python3 /scripts/install-mii-pro.py &&
+             echo 'Consumer MII PRO installation complete.' &&
+             exit 0"
+    restart: "no"
+
+  # CRMI runtime pull — the actual distribution test.
+  #
+  # Instead of loading PRO Library instance resources from the consumer's
+  # baked-in tarball (that would just install the same content twice),
+  # this service fetches the CRMI release manifest from the producer
+  # FHIR endpoint, walks its relatedArtifact[] list (each entry pinned by
+  # canonical URL + version), pulls every artefact from the producer via
+  # standard FHIR `?url=&version=` search, and PUTs each into the
+  # consumer. End-to-end this proves: producer publishes content as
+  # plain FHIR → manifest is the contract → consumer reconstitutes the
+  # release without needing the source tarball at all.
+  #
+  # The consumer HAPI still has the .tgz baked in (for SDC + MII PRO
+  # profile resolution), but the PRO Library content gets overwritten by
+  # what the sync pulls — that's the path we want to exercise.
+  consumer-crmi-sync:
+    image: python:3.11-slim
+    container_name: consumer-crmi-sync
+    depends_on:
+      - consumer-mii-pro-installer
+      - pro-library-loader
+    networks:
+      - fhir-network
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      PRODUCER_FHIR_URL: http://hapi-fhir:8080/fhir
+      CONSUMER_FHIR_URL: http://consumer-hapi:8080/fhir
+      MANIFEST_ID: release-0-1-3
+      WAIT_TIMEOUT: "240"
+    command: >
+      sh -c "pip install -q requests &&
+             python3 /scripts/sync-from-crmi.py"
+    restart: "no"
+
+  # Self-hosted LHC-Forms SDC renderer — static page that loads the lforms
+  # widget from a CDN and points it at the consumer HAPI. Same network so
+  # CORS preflight stays simple (browser → localhost:3001 → localhost:8082).
+  lhc-forms:
+    image: nginx:1.27-alpine
+    container_name: lhc-forms
+    ports:
+      - "3004:80"
+    volumes:
+      - ./lhc-forms:/usr/share/nginx/html:ro
+    networks:
+      - fhir-network
+    restart: unless-stopped
+
+networks:
+  fhir-network:
+    driver: bridge
+
+volumes:
+  consumer_postgres_data:

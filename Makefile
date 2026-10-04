@@ -13,7 +13,7 @@
 include versions.env
 export
 
-.PHONY: up build down logs ps test test-stack
+.PHONY: up build down logs ps test test-stack consumer-up consumer-down consumer-logs
 
 up:
 	docker compose up -d
@@ -35,3 +35,25 @@ test-stack:
 
 test:
 	cd api && pytest tests/sdc_compliance/ tests/integration/ -v --tb=short
+
+# Downstream consumer test network: producer Form Manager + a separate
+# CR-enabled HAPI that re-receives the SDC + MII PRO + PRO Library content,
+# plus a self-hosted LHC-Forms widget for end-to-end SDC testing.
+#
+#   Producer HAPI:           http://localhost:8095/fhir
+#   Consumer HAPI:           http://localhost:8083/fhir
+#   LHC-Forms test harness:  http://localhost:3004
+consumer-up:
+	docker compose -f docker-compose.yml -f docker-compose.consumer-test.yml up -d
+
+consumer-down:
+	docker compose -f docker-compose.yml -f docker-compose.consumer-test.yml down
+
+consumer-logs:
+	docker compose -f docker-compose.yml -f docker-compose.consumer-test.yml logs -f --tail=200 consumer-hapi consumer-crmi-sync lhc-forms
+
+# Re-run the CRMI pull on demand (e.g. after bumping MANIFEST_ID in the
+# overlay or after editing sync-from-crmi.py). The service has restart:no,
+# so `up` won't re-fire it; force a one-shot run.
+consumer-resync:
+	docker compose -f docker-compose.yml -f docker-compose.consumer-test.yml run --rm consumer-crmi-sync
