@@ -72,6 +72,7 @@ ARG MII_PRO_VERSION
 ARG SDC_VERSION
 ARG PRO_LIBRARY_VERSION
 ARG FORM_MANAGER_VERSION
+ARG PCOR_MII_VERSION
 COPY --from=fetch /pkgs/ /data/hapi/local-packages/
 # PRO Library — built from BIH-CEI/pro-library FSH sources, vendored as
 # local-packages/bih-cei.fhir.pro-library-<version>.tgz. 0.x line is provisional.
