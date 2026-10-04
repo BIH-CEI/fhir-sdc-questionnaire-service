@@ -42,13 +42,57 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 shopt -s nullglob
+# VERSIONS-RETENTION, PRAEZISIERT: Nur die NEUESTE Version je Package behaelt
+# die Package-id (PUT /<Typ>/<id>) — Konsumenten und Tests duerfen sich auf
+# id-Stabilitaet des aktuellen Standes verlassen. AELTERE Versionen werden
+# per Conditional Update auf (url, version) ohne Body-id angelegt: als
+# eigene, per ?url=&version= aufloesbare Ressourcen, ohne die aktuelle zu
+# ueberschreiben und ohne id-Kollision.
+latest_for() {  # $1 = package name -> hoechste Version im PKGS_DIR
+    local name="$1" best=""
+    for t in "${PKGS_DIR}"/*.tgz; do
+        local pj n v
+        pj=$(tar xzf "$t" -O --wildcards "*package/package.json" 2>/dev/null) || continue
+        n=$(printf '%s' "$pj" | jq -r '.name // empty')
+        v=$(printf '%s' "$pj" | jq -r '.version // empty')
+        [ "$n" = "$name" ] || continue
+        if [ -z "$best" ] || [ "$(printf '%s\n%s\n' "$best" "$v" | sort -V | tail -1)" = "$v" ]; then
+            best="$v"
+        fi
+    done
+    printf '%s' "$best"
+}
+
 for tarball in "${PKGS_DIR}"/*.tgz; do
     pkg_name=$(basename "${tarball}" .tgz)
     workdir="/tmp/load-${pkg_name}"
     rm -rf "${workdir}" && mkdir -p "${workdir}"
     tar xzf "${tarball}" -C "${workdir}"
 
-    log "--- ${pkg_name} ---"
+    pkg_json=$(tar xzf "${tarball}" -O --wildcards "*package/package.json" 2>/dev/null || true)
+    this_name=$(printf '%s' "$pkg_json" | jq -r '.name // empty')
+    this_ver=$(printf '%s' "$pkg_json" | jq -r '.version // empty')
+    is_latest=0
+    if [ -z "$this_name" ]; then
+        # package.json nicht lesbar -> fail-open: wie bisher per id laden,
+        # statt das Paket stillschweigend zu ueberspringen.
+        is_latest=1
+    elif [ "$this_ver" = "$(latest_for "$this_name")" ]; then
+        is_latest=1
+    fi
+    # RETENTION IST OPT-IN (RETAIN_PRIOR_VERSIONS=1): Aeltere Tarballs tragen
+    # Questionnaires, deren Terminologie (VS/CS) NICHT installiert wird — bei
+    # unversionierter Canonical-Aufloesung kann HAPI CR dann eine alte Version
+    # mit nicht aufloesbaren ValueSet-Referenzen erwischen ($package leer,
+    # $compute 422). Default ist deshalb deterministisch: nur latest. Fuer
+    # Audit-/Altdaten-Szenarien RETAIN_PRIOR_VERSIONS=1 setzen — dann landen
+    # Vorversionen als eigene, per ?url=&version= aufloesbare Ressourcen
+    # (Conditional Update, ohne Body-id) zusaetzlich auf dem Server.
+    if [ "${is_latest}" -eq 0 ] && [ "${RETAIN_PRIOR_VERSIONS:-0}" != "1" ]; then
+        log "--- ${pkg_name} (latest=0) uebersprungen — RETAIN_PRIOR_VERSIONS!=1 ---"
+        continue
+    fi
+    log "--- ${pkg_name} (latest=$is_latest) ---"
     # Per-type counters — flat variables for bash 3.x portability (macOS)
     count_Questionnaire=0
     count_Library=0
@@ -84,7 +128,7 @@ for tarball in "${PKGS_DIR}"/*.tgz; do
         # Resources without url/version (e.g. Provenance) keep the id-PUT.
         curl_url=$(jq -r '.url // empty' "${jsonfile}")
         curl_ver=$(jq -r '.version // empty' "${jsonfile}")
-        if [ -n "${curl_url}" ] && [ -n "${curl_ver}" ]; then
+        if [ "${is_latest}" -eq 0 ] && [ -n "${curl_url}" ] && [ -n "${curl_ver}" ]; then
             # Body-id entfernen: Beim Conditional-Create wuerde die mit der
             # id der Vorversion kollidieren (409). Server vergibt die id;
             # Aufloesung laeuft ueber url|version, nicht ueber die id.
