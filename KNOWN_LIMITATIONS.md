@@ -351,6 +351,17 @@ pro Aufruf mehr.
 als `private define` markieren — dann tauchen sie in keinem ungefilterten
 `$evaluate`-Ergebnis auf und der Converter-Pfad wird nie betreten.
 
-**Upstream:** Issue gegen cqframework/clinical-reasoning mit Minimal-Repro
-(Library + QR + $evaluate mit/ohne expression) einreichen — Regression
-3.28 -> 4.9 im Parameters-Converter fuer Backbone-Komponenten.
+**Upstream (recherchiert 2026-10-04): bereits gefixt, kein Issue noetig.**
+Die Regression kam mit CR 4.9.0 ("Update to CQL 5.0", PR #1058). Ein Issue
+wurde nie gefiled; ein anderes Team (NCQA-HEDIS, gleicher Bug bei
+ExplanationOfBenefit.item.adjudication — dieselbe Innerclass-Heuristik) hat
+den Fix direkt eingebracht: PR #1089 "Fix nested backbone element
+conversion", gemerged 2026-08-27, released in **clinical-reasoning 4.12.0**
+(2026-09-09, inkl. NestedBackboneSdeTest; Teilfix schon in 4.11.1).
+HAPI 8.12 buendelt noch 4.9.0 — der Fix erreicht uns mit dem naechsten
+HAPI-Release, das CR >= 4.12 traegt.
+
+**Erkennungsmechanik:** `test_unfiltered_evaluate_upstream_tripwire`
+(strict xfail) schlaegt beim ersten Image mit gefixtem Converter hart an —
+dann diesen Abschnitt aufloesen; der expression=-Filter im Sidecar bleibt
+trotzdem (vermeidet QR-Vollserialisierung pro Aufruf).
