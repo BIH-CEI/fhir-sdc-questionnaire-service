@@ -34,7 +34,7 @@ Multi-arch: `linux/amd64`, `linux/arm64`.
 
 | Component | Version | Source |
 |-----------|---------|--------|
-| HAPI FHIR | 8.4.0 (pinned by digest; 8.12 blocked by a CR/CQL regression — see KNOWN_LIMITATIONS) | `hapiproject/hapi` |
+| HAPI FHIR | 8.12.0 (pinned by digest) | `hapiproject/hapi` |
 | SDC IG | 3.0.0 | `hl7.fhir.uv.sdc` (status patched `draft`→`active` so HAPI accepts it; see `Dockerfile.form-manager`) |
 | MII PRO IG | 2026.7.0 | `de.medizininformatikinitiative.kerndatensatz.pros` |
 | PCOR-MII IG | 0.3.0 | vendored official IG build package ([bih-cei.github.io/PCOR-MII](https://bih-cei.github.io/PCOR-MII/package.tgz)) |

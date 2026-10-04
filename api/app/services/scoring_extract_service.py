@@ -91,9 +91,17 @@ class ScoringExtractService:
                 f"observationExtract=true and sdc-calculatedExpression"
             )
 
-        # 3. One $evaluate call returns all CQL defines for this Patient
+        # 3. One $evaluate call — EXPLICITLY limited to the defines the
+        # extract-flagged items name. Two reasons: (a) clinical-reasoning
+        # >= 4.9 (HAPI >= 8.12) fails to convert resource-valued helper
+        # defines with nested backbone components back into Parameters
+        # ('Could not resolve inner FHIR type: ...ItemAnswerComponent');
+        # requesting only the scalar score defines sidesteps the converter
+        # entirely. (b) It avoids serialising the full QuestionnaireResponse
+        # on every call. See KNOWN_LIMITATIONS.md.
+        expressions = sorted({i["cql_expression"] for i in extract_items if i.get("cql_expression")})
         define_values = self._unpack_parameters(
-            await self._invoke_evaluate(library_id, subject_reference)
+            await self._invoke_evaluate(library_id, subject_reference, expressions)
         )
 
         # 4. Provenance — find the most recent matching QR
@@ -166,9 +174,14 @@ class ScoringExtractService:
                 flagged.append({"item": item, "cql_expression": calc_expression})
         return flagged
 
-    async def _invoke_evaluate(self, library_id: str, subject: str) -> dict:
+    async def _invoke_evaluate(
+        self, library_id: str, subject: str, expressions: list[str] | None = None
+    ) -> dict:
+        params: list[tuple[str, str]] = [("subject", subject)]
+        for expr in expressions or []:
+            params.append(("expression", expr))
         r = await self._client.get(
-            f"/Library/{library_id}/$evaluate", params={"subject": subject}
+            f"/Library/{library_id}/$evaluate", params=params
         )
         r.raise_for_status()
         return r.json()

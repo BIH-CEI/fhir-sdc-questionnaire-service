@@ -327,20 +327,30 @@ When you discover a new server limitation:
 **Last Updated:** 2025-10-26
 **Maintainer:** Development Team
 
-## HAPI CR 8.12 CQL-Regression (2026-10-04)
+## clinical-reasoning >= 4.9: Parameters-Converter vs. resource-wertige Defines (2026-10-04)
 
-`Library/$evaluate` scheitert auf `hapiproject/hapi:v8.12.0-1`, sobald das CQL
-QuestionnaireResponse-Items traversiert:
+HAPI 8.12 buendelt cqf-fhir-cr 4.9.0 / CQL-Engine 5.0.0 (8.4: 3.28/3.29).
+`Library/$evaluate` OHNE expression-Filter scheitert dort, sobald ein Define
+eine Ressource mit Backbone-Kindern zurueckgibt (bei uns: `MostRecentResponse`
+= komplette QuestionnaireResponse):
 
     Could not resolve inner FHIR type: QuestionnaireResponseItemAnswerComponent
 
-Repro: pro-library `phq-9-scoring` (0.1.4) + beliebiger beantworteter PHQ-9-QR,
-`GET /Library/phq-9-scoring/$evaluate?subject=Patient/<id>`. Auf v8.4.0 liefert
-derselbe Aufruf 15 Defines fehlerfrei. Deshalb bleibt die HAPI-Base auf 8.4
-gepinnt (Digest im Dockerfile), obwohl MII PRO 2026.7.0 + PCOR-MII geladen
-werden. Bei jedem HAPI-Bump re-testen; Upstream-Issue gegen hapifhir/
-org.hl7.fhir.core bzw. clinical-reasoning mit obigem Minimal-Repro stellen.
+Quelle der Meldung: `org.opencds.cqf.fhir.cql.engine.parameters.CqlFhirParametersConverter`
+(cqf-fhir-cql-4.9.0.jar) — es ist der RUECKKONVERTIERUNGS-Schritt in die
+Parameters-Ressource, NICHT die CQL-Auswertung: derselbe Aufruf mit
+`?expression=PHQ9TotalScore&expression=...` liefert auf 8.12 korrekte Werte.
+Auf 8.4 (Converter 3.28) lief auch der ungefilterte Aufruf.
 
-Hinweis: Der Mismatch CQL/ELM 0.1.2 vs. Resource 0.1.3 in pro-library 0.1.3
-war ein ZWEITER, unabhängiger Fehler (behoben durch Hotfix 0.1.4) — 8.12
-meldete ihn korrekt, 8.4 verschluckte ihn.
+**Workaround (implementiert):** Der Sidecar fordert bei `$compute-and-extract`
+nur noch die Defines an, die die extract-geflaggten Items in ihrer
+`sdc-calculatedExpression` benennen. Nebeneffekt: keine QR-Vollserialisierung
+pro Aufruf mehr.
+
+**Hygiene fuer pro-library 0.2.0:** Helfer-Defines wie `MostRecentResponse`
+als `private define` markieren — dann tauchen sie in keinem ungefilterten
+`$evaluate`-Ergebnis auf und der Converter-Pfad wird nie betreten.
+
+**Upstream:** Issue gegen cqframework/clinical-reasoning mit Minimal-Repro
+(Library + QR + $evaluate mit/ohne expression) einreichen — Regression
+3.28 -> 4.9 im Parameters-Converter fuer Backbone-Komponenten.
