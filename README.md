@@ -37,6 +37,7 @@ Multi-arch: `linux/amd64`, `linux/arm64`.
 | HAPI FHIR | 8.12.0 (pinned by digest) | `hapiproject/hapi` |
 | SDC IG | 3.0.0 | `hl7.fhir.uv.sdc` (status patched `draft`→`active` so HAPI accepts it; see `Dockerfile.form-manager`) |
 | MII PRO IG | 2026.7.0 | `de.medizininformatikinitiative.kerndatensatz.pros` |
+| PCOR-MII IG | 0.3.0 | vendored official IG build package ([bih-cei.github.io/PCOR-MII](https://bih-cei.github.io/PCOR-MII/package.tgz)) |
 
 All upstream tarballs are SHA-256-verified during the image build. Renovate + `.github/workflows/auto-pin-pro-sha.yml` keep MII PRO pins fresh.
 

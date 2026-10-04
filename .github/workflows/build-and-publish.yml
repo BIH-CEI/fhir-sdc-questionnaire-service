@@ -42,6 +42,7 @@ jobs:
           set -a; source versions.env; set +a
           echo "FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}" >> "$GITHUB_ENV"
           echo "PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION}" >> "$GITHUB_ENV"
+          echo "PCOR_MII_VERSION=${PCOR_MII_VERSION}" >> "$GITHUB_ENV"
 
       - name: Compute image metadata
         id: meta
@@ -65,6 +66,7 @@ jobs:
           build-args: |
             FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
             PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
+            PCOR_MII_VERSION=${{ env.PCOR_MII_VERSION }}
             MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -114,6 +116,17 @@ jobs:
             docker logs fm-smoketest | tail -100
             exit 1
           fi
+
+          # PCOR-MII (vendored official IG package) — assert a project
+          # questionnaire incl. the metadata-only case is resolvable by
+          # url+version.
+          PCOR_EDP=$(curl -sf "http://localhost:18095/fhir/Questionnaire?url=https://bih-cei.github.io/PCOR-MII/Questionnaire/UKHDEDP&version=${PCOR_MII_VERSION}&_summary=count"                      | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
+          echo "PCOR-MII ${PCOR_MII_VERSION}: UKHDEDP=$PCOR_EDP"
+          if [ "$PCOR_EDP" -ne 1 ]; then
+            echo "::error::PCOR-MII ${PCOR_MII_VERSION} did not load (UKHDEDP not resolvable by url+version)"
+            docker logs fm-smoketest | tail -100
+            exit 1
+          fi
           echo "::notice::PRO Library ${PRO_LIBRARY_VERSION}: PHQ-9 + release manifest loaded"
           # Full manifest integrity walk (every relatedArtifact resolves) lives in
           # api/tests/integration/test_pro_library_manifest.py — runs in the test workflow.
@@ -141,6 +154,7 @@ jobs:
           build-args: |
             FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
             PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
+            PCOR_MII_VERSION=${{ env.PCOR_MII_VERSION }}
             MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

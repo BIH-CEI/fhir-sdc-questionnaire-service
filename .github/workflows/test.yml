@@ -30,6 +30,7 @@ jobs:
           set -a; source versions.env; set +a
           echo "FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}" >> "$GITHUB_ENV"
           echo "PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION}" >> "$GITHUB_ENV"
+          echo "PCOR_MII_VERSION=${PCOR_MII_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build form-manager image (load locally, shared GHA cache)
         uses: docker/build-push-action@v5
@@ -41,6 +42,7 @@ jobs:
           build-args: |
             FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
             PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
+            PCOR_MII_VERSION=${{ env.PCOR_MII_VERSION }}
             MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
