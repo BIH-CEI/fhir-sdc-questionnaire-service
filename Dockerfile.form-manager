@@ -1,7 +1,12 @@
 ## syntax=docker/dockerfile:1.7
 # HAPI FHIR base image — pinned by digest for reproducibility.
-# Tag at time of pin: hapiproject/hapi:v8.12.0-1 (manifest-list digest, multi-arch).
-ARG HAPI_BASE=hapiproject/hapi@sha256:d7f38d3676900b07e8a7d3500426eaf8d90ea9ced9a6726416f080f68e230fb0
+# Tag at time of pin: v8.4.0 — BEWUSST NICHT 8.12: Die CQL-Engine von HAPI CR
+# 8.12 scheitert an der QR-Item-Traversierung der pro-library-Scoring-CQLs
+# ('Could not resolve inner FHIR type: QuestionnaireResponseItemAnswerComponent');
+# auf 8.4 laeuft dieselbe Library/derselbe QR fehlerfrei (15 Defines).
+# Repro + Details: KNOWN_LIMITATIONS.md -> 'HAPI CR 8.12 CQL-Regression'.
+# Re-Test bei jedem HAPI-Bump; Upstream-Issue einreichen.
+ARG HAPI_BASE=hapiproject/hapi@sha256:429136d44bb60456f7ca91f906cfcf1a43f3c17ff296edd8e9070af7876b309a
 ARG MII_PRO_VERSION=2026.7.0
 ARG MII_PRO_SHA256=2dad397acfca53fef50112e8b049ba1434d76690dcc4660579c426bc843a7a15
 ARG SDC_VERSION=3.0.0

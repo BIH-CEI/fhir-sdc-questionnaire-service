@@ -326,3 +326,21 @@ When you discover a new server limitation:
 
 **Last Updated:** 2025-10-26
 **Maintainer:** Development Team
+
+## HAPI CR 8.12 CQL-Regression (2026-10-04)
+
+`Library/$evaluate` scheitert auf `hapiproject/hapi:v8.12.0-1`, sobald das CQL
+QuestionnaireResponse-Items traversiert:
+
+    Could not resolve inner FHIR type: QuestionnaireResponseItemAnswerComponent
+
+Repro: pro-library `phq-9-scoring` (0.1.4) + beliebiger beantworteter PHQ-9-QR,
+`GET /Library/phq-9-scoring/$evaluate?subject=Patient/<id>`. Auf v8.4.0 liefert
+derselbe Aufruf 15 Defines fehlerfrei. Deshalb bleibt die HAPI-Base auf 8.4
+gepinnt (Digest im Dockerfile), obwohl MII PRO 2026.7.0 + PCOR-MII geladen
+werden. Bei jedem HAPI-Bump re-testen; Upstream-Issue gegen hapifhir/
+org.hl7.fhir.core bzw. clinical-reasoning mit obigem Minimal-Repro stellen.
+
+Hinweis: Der Mismatch CQL/ELM 0.1.2 vs. Resource 0.1.3 in pro-library 0.1.3
+war ein ZWEITER, unabhängiger Fehler (behoben durch Hotfix 0.1.4) — 8.12
+meldete ihn korrekt, 8.4 verschluckte ihn.
