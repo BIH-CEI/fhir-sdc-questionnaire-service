@@ -30,7 +30,8 @@ services:
         # is external content with its own cadence, kept on a separate var.
         FORM_MANAGER_VERSION: ${FORM_MANAGER_VERSION}
         PRO_LIBRARY_VERSION: ${PRO_LIBRARY_VERSION}
-        MII_PRO_VERSION: ${MII_PRO_VERSION:-2026.3.0}
+        PCOR_MII_VERSION: ${PCOR_MII_VERSION}
+        MII_PRO_VERSION: ${MII_PRO_VERSION:-2026.7.0}
         MII_PRO_SHA256: ${MII_PRO_SHA256:-02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701}
     container_name: hapi-fhir-server
     env_file:

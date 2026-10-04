@@ -74,10 +74,32 @@ for tarball in "${PKGS_DIR}"/*.tgz; do
 
         [ -z "${rid}" ] && { log "  WARN: ${basename_jf} has no id, skipping"; continue; }
 
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X PUT "${HAPI_URL}/${rt}/${rid}" \
-            -H "Content-Type: application/fhir+json" \
-            --data-binary @"${jsonfile}")
+        # VERSION RETENTION (audit): canonical resources are upserted by
+        # (url, version) via conditional update — a new business version
+        # CREATES a new server resource instead of clobbering the previous
+        # one under the same id. Same-version re-runs stay idempotent
+        # updates. Earlier versions therefore remain resolvable as current
+        # resources via ?url=...&version=... — required for audit and for
+        # QuestionnaireResponses that pin |<old-version>.
+        # Resources without url/version (e.g. Provenance) keep the id-PUT.
+        curl_url=$(jq -r '.url // empty' "${jsonfile}")
+        curl_ver=$(jq -r '.version // empty' "${jsonfile}")
+        if [ -n "${curl_url}" ] && [ -n "${curl_ver}" ]; then
+            # Body-id entfernen: Beim Conditional-Create wuerde die mit der
+            # id der Vorversion kollidieren (409). Server vergibt die id;
+            # Aufloesung laeuft ueber url|version, nicht ueber die id.
+            jq 'del(.id)' "${jsonfile}" > "${jsonfile}.noid"
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X PUT "${HAPI_URL}/${rt}?url=${curl_url}&version=${curl_ver}" \
+                -H "Content-Type: application/fhir+json" \
+                --data-binary @"${jsonfile}.noid")
+            rm -f "${jsonfile}.noid"
+        else
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X PUT "${HAPI_URL}/${rt}/${rid}" \
+                -H "Content-Type: application/fhir+json" \
+                --data-binary @"${jsonfile}")
+        fi
 
         if [[ "${http_code}" =~ ^2 ]]; then
             case "${rt}" in

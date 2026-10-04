@@ -430,7 +430,7 @@ async def load_test_fixtures(fhir_server):
 # Real MII PRO content — pre-loaded by the container at boot time
 # ============================================================================
 
-# Canonical URLs of MII PRO 2026.3.0 Questionnaires that the Form Manager
+# Canonical URLs of MII PRO 2026.7.0 Questionnaires that the Form Manager
 # image guarantees to ship and load. Tests that hit these can skip the
 # fragile upload-then-resolve dance — content is deterministic and always
 # present.

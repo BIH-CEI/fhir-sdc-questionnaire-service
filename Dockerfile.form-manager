@@ -1,9 +1,9 @@
 ## syntax=docker/dockerfile:1.7
 # HAPI FHIR base image — pinned by digest for reproducibility.
-# Tag at time of pin: hapiproject/hapi:latest (= v8.4.0, built 2025-11-04).
-ARG HAPI_BASE=hapiproject/hapi@sha256:429136d44bb60456f7ca91f906cfcf1a43f3c17ff296edd8e9070af7876b309a
-ARG MII_PRO_VERSION=2026.3.0
-ARG MII_PRO_SHA256=02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701
+# Tag at time of pin: hapiproject/hapi:v8.12.0-1 (manifest-list digest, multi-arch).
+ARG HAPI_BASE=hapiproject/hapi@sha256:d7f38d3676900b07e8a7d3500426eaf8d90ea9ced9a6726416f080f68e230fb0
+ARG MII_PRO_VERSION=2026.7.0
+ARG MII_PRO_SHA256=2dad397acfca53fef50112e8b049ba1434d76690dcc4660579c426bc843a7a15
 ARG SDC_VERSION=3.0.0
 ARG SDC_SHA256=be5c3f0a7f82e072b40739e05fb68f3e58e44c9bd040cd901b1b55c62f23dca2
 # "Our" versions — single source of truth lives in versions.env at repo root.
@@ -14,6 +14,7 @@ ARG SDC_SHA256=be5c3f0a7f82e072b40739e05fb68f3e58e44c9bd040cd901b1b55c62f23dca2
 # - FORM_MANAGER_VERSION  — this repo's runtime SemVer (HAPI image + sidecar).
 # - PRO_LIBRARY_VERSION   — bundled BIH-CEI/pro-library content version.
 ARG FORM_MANAGER_VERSION
+ARG PCOR_MII_VERSION
 ARG PRO_LIBRARY_VERSION
 
 FROM debian:bookworm-slim AS fetch
@@ -75,6 +76,9 @@ COPY --from=fetch /pkgs/ /data/hapi/local-packages/
 # PRO Library — built from BIH-CEI/pro-library FSH sources, vendored as
 # local-packages/bih-cei.fhir.pro-library-<version>.tgz. 0.x line is provisional.
 COPY local-packages/bih-cei.fhir.pro-library-${PRO_LIBRARY_VERSION}.tgz /data/hapi/local-packages/
+# PCOR-MII project IG — vendored official IG-build package (gh-pages tgz is
+# rebuilt on every deploy, so we pin bytes by vendoring; refresh deliberately).
+COPY local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz /data/hapi/local-packages/
 COPY hapi-config/application.yaml /data/hapi/application.yaml
 
 # NOTE: HAPI's PackageInstallerSvc only installs NamingSystem / CodeSystem /
@@ -91,6 +95,7 @@ COPY hapi-config/application.yaml /data/hapi/application.yaml
 ENV SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/hapi/ \
     HAPI_FHIR_CR_ENABLED=true \
     PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION} \
+    PCOR_MII_VERSION=${PCOR_MII_VERSION} \
     FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}
 
 LABEL org.opencontainers.image.title="FHIR SDC Form Manager (HAPI + SDC + MII PRO + PRO Library)" \

@@ -36,9 +36,9 @@ hapi:
         fetchDependencies: false
       mii_pros:
         name: de.medizininformatikinitiative.kerndatensatz.pros
-        version: 2026.3.0
+        version: 2026.7.0
         installMode: STORE_AND_INSTALL
-        packageUrl: file:///data/hapi/local-packages/de.medizininformatikinitiative.kerndatensatz.pros-2026.3.0.tgz
+        packageUrl: file:///data/hapi/local-packages/de.medizininformatikinitiative.kerndatensatz.pros-2026.7.0.tgz
         reloadExisting: false
         fetchDependencies: false
 
@@ -49,6 +49,21 @@ hapi:
       # Version interpolated from PRO_LIBRARY_VERSION env var (set by the
       # Dockerfile build-arg, sourced from versions.env at repo root).
       # Single source of truth — never hardcode the version here.
+      # PCOR-MII (BIH-CEI) — Projekt-IG auf dem MII-PRO-Modul: 20 eigene
+      # Questionnaires (inkl. metadata-only WAI/UKHD-EDP), lokale Terminologie
+      # (pcor-item-dictionary, questionnaire-/score-catalogue), Beispiel-
+      # patienten und Termin-Bundles. Quelle: offizielles IG-Build-Artefakt
+      # https://bih-cei.github.io/PCOR-MII/package.tgz — hier vendored, weil
+      # gh-pages das tgz bei jedem Deploy neu baut (Version bleibt 0.3.0,
+      # Bytes nicht); Refresh bewusst per Hand/Make-Target.
+      pcor_mii:
+        name: pcor-mii
+        version: ${PCOR_MII_VERSION}
+        installMode: STORE_AND_INSTALL
+        packageUrl: file:///data/hapi/local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz
+        reloadExisting: false
+        fetchDependencies: false
+
       pro_library:
         name: bih-cei.fhir.pro-library
         version: ${PRO_LIBRARY_VERSION}

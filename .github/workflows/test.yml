@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  MII_PRO_VERSION: "2026.3.0"
+  MII_PRO_VERSION: "2026.7.0"
 
 # Runs in parallel with the image-publish workflow (build-and-publish.yml).
 # Both share the same buildx GHA cache, so the second one to start reuses

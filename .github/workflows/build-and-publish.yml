@@ -14,7 +14,7 @@ env:
   # MII PRO is external content with its own cadence — kept on its own
   # variable here, NOT in versions.env (which only tracks "our" things:
   # FORM_MANAGER_VERSION + PRO_LIBRARY_VERSION, sourced per-job below).
-  MII_PRO_VERSION: "2026.3.0"
+  MII_PRO_VERSION: "2026.7.0"
 
 # Runs in parallel with the test workflow (test.yml). Both pipelines share
 # the same buildx GHA cache, so whichever boots second reuses layers and is
