@@ -143,7 +143,7 @@ services:
     environment:
       PRODUCER_FHIR_URL: http://hapi-fhir:8080/fhir
       CONSUMER_FHIR_URL: http://consumer-hapi:8080/fhir
-      MANIFEST_ID: release-0-1-3
+      MANIFEST_ID: release-0-1-4
       WAIT_TIMEOUT: "240"
     command: >
       sh -c "pip install -q requests &&

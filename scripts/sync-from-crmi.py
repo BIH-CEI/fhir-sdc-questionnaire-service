@@ -86,7 +86,17 @@ def fetch_manifest() -> dict:
             raise SystemExit(f"ERROR: manifest not found by canonical URL {MANIFEST_URL}")
         return entries[0]["resource"]
     log(f"Fetching manifest Library/{MANIFEST_ID} from producer.")
-    r = requests.get(f"{PRODUCER}/Library/{MANIFEST_ID}", headers=JSON_HEADERS, timeout=15)
+    # Der Producer-Loader (PUT der Instanzressourcen) laeuft parallel zum
+    # Boot — ein 404 heisst in der Regel nur "Manifest noch nicht geladen".
+    # Deshalb bis MANIFEST_WAIT Sekunden warten statt zu sterben; erst ein
+    # nach Ablauf verbleibender 404 ist ein echter Fehler.
+    deadline = time.time() + int(os.environ.get("MANIFEST_WAIT", "240"))
+    while True:
+        r = requests.get(f"{PRODUCER}/Library/{MANIFEST_ID}", headers=JSON_HEADERS, timeout=15)
+        if r.status_code != 404 or time.time() >= deadline:
+            break
+        log(f"manifest not loaded yet (404) — retrying ({int(deadline - time.time())}s left)")
+        time.sleep(10)
     r.raise_for_status()
     return r.json()
 
