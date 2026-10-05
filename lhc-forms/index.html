@@ -5,17 +5,17 @@
   <title>PRO Library — LHC-Forms SDC Test Harness</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- LHC-Forms widget (lforms) + its peer deps, loaded from jsDelivr.
-       Pin to a known-stable major; bump deliberately if you want newer
-       SDC features. The widget exposes `LForms` on window. -->
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-  <link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/lhc-common.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/assets/lib/zone.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/fhir/R4/lformsFHIR.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/runtime.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/polyfills.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lforms@42/dist/lforms/webcomponent/main.js"></script>
+  <!-- LHC-Forms Webcomponent-Build (lforms), von jsDelivr, exakt gepinnt.
+       Reihenfolge ist Pflicht: zone -> lhc-forms-Bundle (definiert window.LForms
+       inkl. LForms.Util) -> lformsFHIR (haengt SDC/FHIR-Support an LForms an).
+       Kein jQuery/lhc-common mehr: das brauchte nur der alte AngularJS-Build. -->
+  <link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lforms@42.2.2/dist/lforms/webcomponent/styles.css" />
+  <!-- defer: das Bundle haengt beim Laden Styles an document.body — im <head>
+       ohne defer ist body noch null ("Cannot read properties of null (appendChild)").
+       defer erhaelt die Reihenfolge zone -> lhc-forms -> lformsFHIR. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/lforms@42.2.2/dist/lforms/webcomponent/assets/lib/zone.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/lforms@42.2.2/dist/lforms/webcomponent/lhc-forms.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/lforms@42.2.2/dist/lforms/fhir/R4/lformsFHIR.min.js"></script>
 
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem; background: #fafafa; }
@@ -147,7 +147,9 @@
     }
 
     function currentQR() {
-      return LForms.Util.getFormFHIRData('QuestionnaireResponse', 'R4', 'lhc-form');
+      // lforms@42 erwartet hier Element oder CSS-Selektor — eine nackte id
+      // laeuft ins "templateOptions of undefined".
+      return LForms.Util.getFormFHIRData('QuestionnaireResponse', 'R4', '#lhc-form');
     }
 
     function updateRawQR() {
