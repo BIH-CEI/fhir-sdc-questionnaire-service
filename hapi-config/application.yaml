@@ -1,6 +1,23 @@
 # HAPI FHIR Configuration
 # This file will be mounted into the HAPI FHIR container
 
+# Hibernate Search (Lucene) — required for ValueSet/$expand against
+# CodeSystems stored in the DB (HAPI queries concepts through the index;
+# without it: HSEARCH800001 "Hibernate Search was not initialized").
+# Clients expand answerValueSets at runtime from this server — the MII PRO
+# and PCOR-MII packages ship ValueSets without expansion.
+# Index lives next to the DB: /data/hapi/lucene is a named volume in
+# docker-compose.yml (pre-created in the image, owned by the nonroot user).
+spring:
+  jpa:
+    properties:
+      hibernate.search.enabled: true
+      hibernate.search.backend.type: lucene
+      hibernate.search.backend.analysis.configurer: ca.uhn.fhir.jpa.search.HapiHSearchAnalysisConfigurers$HapiLuceneAnalysisConfigurer
+      hibernate.search.backend.directory.type: local-filesystem
+      hibernate.search.backend.directory.root: /data/hapi/lucene
+      hibernate.search.backend.lucene_version: lucene_current
+
 hapi:
   fhir:
     # Server settings

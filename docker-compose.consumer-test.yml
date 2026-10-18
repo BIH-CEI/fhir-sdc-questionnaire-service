@@ -85,6 +85,8 @@ services:
       # belongs at publication time, not on the consumer's hot path.
       hapi.fhir.validation_enabled: false
       hapi.fhir.validation_server_url: http://consumer-hapi:8080/fhir
+    volumes:
+      - consumer_hapi_lucene:/data/hapi/lucene
     ports:
       - "8083:8080"
     depends_on:
@@ -200,3 +202,4 @@ networks:
 
 volumes:
   consumer_postgres_data:
+  consumer_hapi_lucene:

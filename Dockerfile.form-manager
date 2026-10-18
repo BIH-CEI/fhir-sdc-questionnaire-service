@@ -31,10 +31,10 @@ ARG PCOR_MII_VERSION
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates python3 \
  && rm -rf /var/lib/apt/lists/* \
- && mkdir -p /pkgs
+ && mkdir -p /pkgs /lucene
 
 # MII PRO — verified upstream tarball, used as-is
-RUN curl -sfL "https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${MII_PRO_VERSION}" \
+RUN curl -sfL --retry 5 --retry-all-errors --retry-delay 5 "https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${MII_PRO_VERSION}" \
         -o "/pkgs/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz" \
  && echo "${MII_PRO_SHA256}  /pkgs/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz" \
         | sha256sum -c -
@@ -44,7 +44,7 @@ RUN curl -sfL "https://packages.simplifier.net/de.medizininformatikinitiative.ke
 # HL7 ships SDC 3.0.0 with status=draft on all artefacts (SDC has been "trial-use"
 # indefinitely); HAPI rejects draft on auto-install. The patch only touches the
 # top-level `status` field, never nested resources.
-RUN curl -sfL "https://packages.simplifier.net/hl7.fhir.uv.sdc/${SDC_VERSION}" \
+RUN curl -sfL --retry 5 --retry-all-errors --retry-delay 5 "https://packages.simplifier.net/hl7.fhir.uv.sdc/${SDC_VERSION}" \
         -o "/pkgs/sdc-upstream.tgz" \
  && echo "${SDC_SHA256}  /pkgs/sdc-upstream.tgz" | sha256sum -c - \
  && mkdir -p /tmp/sdc && tar xzf /pkgs/sdc-upstream.tgz -C /tmp/sdc
@@ -89,6 +89,9 @@ ARG PRO_LIBRARY_VERSION
 ARG FORM_MANAGER_VERSION
 ARG PCOR_MII_VERSION
 COPY --from=fetch /pkgs/ /data/hapi/local-packages/
+# Empty Lucene index root, owned by the distroless nonroot user so a fresh
+# named volume mounted here inherits writable ownership (see application.yaml).
+COPY --from=fetch --chown=65532:65532 /lucene /data/hapi/lucene
 # PRO Library — built from BIH-CEI/pro-library FSH sources, vendored as
 # local-packages/bih-cei.fhir.pro-library-<version>.tgz. 0.x line is provisional.
 COPY local-packages/bih-cei.fhir.pro-library-${PRO_LIBRARY_VERSION}.tgz /data/hapi/local-packages/

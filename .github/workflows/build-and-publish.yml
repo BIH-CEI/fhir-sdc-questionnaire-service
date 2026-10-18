@@ -136,6 +136,15 @@ jobs:
             docker logs fm-smoketest | tail -100
             exit 1
           fi
+          # Runtime ValueSet expansion — packages ship no expansions, clients
+          # expand answerValueSets from this server (needs Hibernate Search).
+          EXPAND_TOTAL=$(curl -s "http://localhost:18095/fhir/ValueSet/\$expand?url=https://bih-cei.github.io/PCOR-MII/ValueSet/ukhd-edp-stufe-6-vs" | python3 -c "import sys,json; print(json.load(sys.stdin).get('expansion', {}).get('total', 0))")
+          echo "ValueSet/\$expand ukhd-edp-stufe-6-vs: $EXPAND_TOTAL codes"
+          if [ "$EXPAND_TOTAL" -lt 1 ]; then
+            echo "::error::ValueSet/\$expand returned no codes (Hibernate Search / Lucene not initialised?)"
+            docker logs fm-smoketest | tail -100
+            exit 1
+          fi
           echo "::notice::PRO Library ${PRO_LIBRARY_VERSION}: PHQ-9 + release manifest loaded"
           # Full manifest integrity walk (every relatedArtifact resolves) lives in
           # api/tests/integration/test_pro_library_manifest.py — runs in the test workflow.

@@ -87,7 +87,10 @@ services:
     # Healthcheck disabled - HAPI container doesn't have curl/wget
     # Services will wait via sleep delay instead
     # No bind-mounts: application.yaml + MII PRO tarball are baked into the image
-    # via Dockerfile.form-manager. Lucene index is rebuilt on each container start.
+    # via Dockerfile.form-manager. The Lucene index (ValueSet/$expand) persists
+    # next to the DB — losing one without the other needs a $reindex.
+    volumes:
+      - hapi_lucene:/data/hapi/lucene
 
   # Producer-side instance-resource loader.
   #
@@ -185,3 +188,4 @@ networks:
 
 volumes:
   postgres_data:
+  hapi_lucene:
