@@ -127,6 +127,15 @@ jobs:
             docker logs fm-smoketest | tail -100
             exit 1
           fi
+          # PCOR-MII terminology ships as status=draft and is only installed
+          # thanks to the draft→active patch in Dockerfile.form-manager.
+          PCOR_CS=$(curl -sf "http://localhost:18095/fhir/CodeSystem?url=https://bih-cei.github.io/PCOR-MII/CodeSystem/pcor-item-dictionary&_summary=count" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total', 0))")
+          echo "PCOR-MII ${PCOR_MII_VERSION}: pcor-item-dictionary=$PCOR_CS"
+          if [ "$PCOR_CS" -ne 1 ]; then
+            echo "::error::PCOR-MII terminology not installed (draft→active patch missing or HAPI skipped it)"
+            docker logs fm-smoketest | tail -100
+            exit 1
+          fi
           echo "::notice::PRO Library ${PRO_LIBRARY_VERSION}: PHQ-9 + release manifest loaded"
           # Full manifest integrity walk (every relatedArtifact resolves) lives in
           # api/tests/integration/test_pro_library_manifest.py — runs in the test workflow.

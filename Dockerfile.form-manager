@@ -26,6 +26,7 @@ ARG MII_PRO_VERSION
 ARG MII_PRO_SHA256
 ARG SDC_VERSION
 ARG SDC_SHA256
+ARG PCOR_MII_VERSION
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates python3 \
@@ -48,28 +49,38 @@ RUN curl -sfL "https://packages.simplifier.net/hl7.fhir.uv.sdc/${SDC_VERSION}" \
  && echo "${SDC_SHA256}  /pkgs/sdc-upstream.tgz" | sha256sum -c - \
  && mkdir -p /tmp/sdc && tar xzf /pkgs/sdc-upstream.tgz -C /tmp/sdc
 
+# PCOR-MII — vendored official IG build (gh-pages tgz is rebuilt on every
+# deploy, so bytes are pinned by vendoring). Ships ALL terminology as
+# status=draft (36 CS, 35 VS, 1 CM), which HAPI's installer skips just like
+# SDC's — without the patch the 20 PCOR Questionnaires load (via the post-boot
+# loader) but their answerValueSets do not resolve.
+COPY local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz /tmp/pcor-upstream.tgz
+RUN mkdir -p /tmp/pcor && tar xzf /tmp/pcor-upstream.tgz -C /tmp/pcor
+
 RUN python3 <<'PY'
 import json, glob
 PATCH_TYPES = {
     'StructureDefinition', 'CodeSystem', 'ValueSet',
     'SearchParameter', 'OperationDefinition', 'CapabilityStatement',
-    'StructureMap', 'ImplementationGuide',
+    'StructureMap', 'ImplementationGuide', 'ConceptMap',
 }
-patched = 0
-for fp in glob.glob('/tmp/sdc/package/*.json'):
-    try:
-        with open(fp) as f: d = json.load(f)
-    except Exception:
-        continue
-    if d.get('resourceType') in PATCH_TYPES and d.get('status') == 'draft':
-        d['status'] = 'active'
-        with open(fp, 'w') as f: json.dump(d, f)
-        patched += 1
-print(f'SDC: patched {patched} draft→active resources')
+for label, root in (('SDC', '/tmp/sdc'), ('PCOR-MII', '/tmp/pcor')):
+    patched = 0
+    for fp in glob.glob(f'{root}/package/*.json'):
+        try:
+            with open(fp) as f: d = json.load(f)
+        except Exception:
+            continue
+        if d.get('resourceType') in PATCH_TYPES and d.get('status') == 'draft':
+            d['status'] = 'active'
+            with open(fp, 'w') as f: json.dump(d, f)
+            patched += 1
+    print(f'{label}: patched {patched} draft→active resources')
 PY
 
 RUN cd /tmp/sdc && tar czf "/pkgs/hl7.fhir.uv.sdc-${SDC_VERSION}.tgz" package/ \
- && rm /pkgs/sdc-upstream.tgz
+ && rm /pkgs/sdc-upstream.tgz \
+ && cd /tmp/pcor && tar czf "/pkgs/pcor-mii-${PCOR_MII_VERSION}.tgz" package/
 
 FROM ${HAPI_BASE}
 ARG MII_PRO_VERSION
@@ -81,9 +92,8 @@ COPY --from=fetch /pkgs/ /data/hapi/local-packages/
 # PRO Library — built from BIH-CEI/pro-library FSH sources, vendored as
 # local-packages/bih-cei.fhir.pro-library-<version>.tgz. 0.x line is provisional.
 COPY local-packages/bih-cei.fhir.pro-library-${PRO_LIBRARY_VERSION}.tgz /data/hapi/local-packages/
-# PCOR-MII project IG — vendored official IG-build package (gh-pages tgz is
-# rebuilt on every deploy, so we pin bytes by vendoring; refresh deliberately).
-COPY local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz /data/hapi/local-packages/
+# PCOR-MII project IG — comes in via /pkgs from the fetch stage (draft→active
+# patched there, see above).
 COPY hapi-config/application.yaml /data/hapi/application.yaml
 
 # NOTE: HAPI's PackageInstallerSvc only installs NamingSystem / CodeSystem /

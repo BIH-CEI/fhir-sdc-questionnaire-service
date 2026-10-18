@@ -150,6 +150,36 @@ services:
              python3 /scripts/sync-from-crmi.py"
     restart: "no"
 
+  # PCOR-MII pull — same idea as consumer-crmi-sync, but PCOR-MII ships as a
+  # plain IG package without a CRMI release manifest. The producer's
+  # ImplementationGuide/pcor-mii is the contract: sync-from-ig.py walks its
+  # definition.resource[] (Questionnaires, CS/VS/CM, ObservationDefinition;
+  # examples skipped) and writes each resource from the producer into the
+  # consumer, updating in place where the consumer already has url|version.
+  consumer-pcor-sync:
+    image: python:3.11-slim
+    container_name: consumer-pcor-sync
+    depends_on:
+      - consumer-mii-pro-installer
+      - pro-library-loader
+    networks:
+      - fhir-network
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./local-packages:/pkgs:ro
+    environment:
+      PRODUCER_FHIR_URL: http://hapi-fhir:8080/fhir
+      CONSUMER_FHIR_URL: http://consumer-hapi:8080/fhir
+      IG_ID: pcor-mii
+      # Resource list fallback while the producer cannot store the IG itself
+      # (example Bundle references → placeholder 422, see sync-from-ig.py).
+      IG_PACKAGE: /pkgs/pcor-mii-${PCOR_MII_VERSION}.tgz
+      WAIT_TIMEOUT: "240"
+    command: >
+      sh -c "pip install -q requests &&
+             python3 /scripts/sync-from-ig.py"
+    restart: "no"
+
   # Self-hosted LHC-Forms SDC renderer — static page that loads the lforms
   # widget from a CDN and points it at the consumer HAPI. Same network so
   # CORS preflight stays simple (browser → localhost:3001 → localhost:8082).

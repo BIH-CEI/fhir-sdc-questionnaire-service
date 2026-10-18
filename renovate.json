@@ -11,9 +11,27 @@
       "transformTemplates": [
         "{\"releases\": [{\"version\": $['dist-tags'].latest}]}"
       ]
+    },
+    "pcor-mii-ghpages": {
+      "defaultRegistryUrlTemplate": "https://bih-cei.github.io/PCOR-MII/package.manifest.json",
+      "format": "json",
+      "transformTemplates": [
+        "{\"releases\": [{\"version\": version}]}"
+      ]
     }
   },
   "customManagers": [
+    {
+      "customType": "regex",
+      "description": "PCOR-MII version pin in versions.env (vendored tgz is refreshed by auto-vendor-pcor-mii)",
+      "fileMatch": ["^versions\\.env$"],
+      "matchStrings": [
+        "PCOR_MII_VERSION=(?<currentValue>\\S+)"
+      ],
+      "datasourceTemplate": "custom.pcor-mii-ghpages",
+      "depNameTemplate": "pcor-mii",
+      "versioningTemplate": "semver"
+    },
     {
       "customType": "regex",
       "description": "MII PRO version pin in Dockerfile.form-manager",
@@ -34,6 +52,16 @@
       "commitMessageAction": "bump",
       "prBodyNotes": [
         "After this PR lands on the renovate branch, the `auto-pin-pro-sha` workflow recomputes and commits the matching `MII_PRO_SHA256`. CI then runs the full build + smoke test."
+      ]
+    },
+    {
+      "matchPackageNames": ["pcor-mii"],
+      "groupName": "PCOR-MII IG",
+      "commitMessageTopic": "PCOR-MII",
+      "commitMessageAction": "bump",
+      "labels": ["renovate", "pcor-mii"],
+      "prBodyNotes": [
+        "After this PR lands on the renovate branch, the `auto-vendor-pcor-mii` workflow downloads the matching package.tgz into `local-packages/` and commits it. CI then runs the full build + smoke test."
       ]
     },
     {
