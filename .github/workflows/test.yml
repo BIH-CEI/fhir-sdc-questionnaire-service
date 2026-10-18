@@ -7,8 +7,6 @@ on:
     branches: [master, main, develop]
   workflow_dispatch:
 
-env:
-
 # Runs in parallel with the image-publish workflow (build-and-publish.yml).
 # Both share the same buildx GHA cache, so the second one to start reuses
 # layers and gets to its real work in seconds.
