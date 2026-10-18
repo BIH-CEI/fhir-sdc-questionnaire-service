@@ -19,14 +19,14 @@ ARCHITECTURE NOTE
 
 DATA STRATEGY
 -------------
-The container ships MII PRO 2026.3.0 with all Questionnaires/ValueSets/
+The container ships MII PRO 2027.0.0-ballot.1 with all Questionnaires/ValueSets/
 CodeSystems pre-loaded at boot. Tests anchor on real PRO content by
 canonical URL via the `pro_questionnaires` fixture (see conftest.py),
 which keeps tests deterministic and removes the fragile upload-then-resolve
 dance that plagued the earlier example.org-based fixtures.
 
 The chain we exercise for transitive-dep tests:
-    Questionnaire mii-qst-pro-eortc-qlq-c30-variant-a
+    Questionnaire mii-qst-pro-eortc-qlq-c30
       → ValueSet mii-vs-pro-eortc-qlq-c30-scale-4pt
       → ValueSet mii-vs-pro-eortc-qlq-c30-scale-7pt
         → CodeSystem mii-cs-pro-eortc-qlq-c30 (shared by both VS)
@@ -46,7 +46,7 @@ from tests.fixtures.sample_resources import (
 
 
 # Canonical URLs of the MII PRO ValueSets and CodeSystem we expect
-# $package to traverse to from qlq-c30-variant-a.
+# $package to traverse to from qlq-c30.
 QLQ_C30_VS_4PT = "https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-4pt"
 QLQ_C30_VS_7PT = "https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-7pt"
 QLQ_C30_CS     = "https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/CodeSystem/mii-cs-pro-eortc-qlq-c30"
@@ -101,12 +101,12 @@ class TestSDCPackageOperationCompliance:
         """
         SDC Requirement: SHALL include all referenced ValueSets
 
-        Anchor: qlq-c30-variant-a binds 2 external answerValueSets
+        Anchor: qlq-c30 binds 2 external answerValueSets
         (scale-4pt, scale-7pt). Both MUST appear in the bundle.
 
         Reference: SDC IG Section 3.2.1
         """
-        q_id = pro_questionnaires["qlq_c30_variant_a"]["id"]
+        q_id = pro_questionnaires["qlq_c30"]["id"]
 
         response = await api_client.get(f"/api/questionnaires/{q_id}/$package")
         bundle = response.json()
@@ -130,13 +130,13 @@ class TestSDCPackageOperationCompliance:
         SDC Requirement: SHALL include CodeSystems referenced by ValueSets
         (transitive dependency resolution)
 
-        Anchor: qlq-c30-variant-a → 2 VS → both bind CodeSystem
+        Anchor: qlq-c30 → 2 VS → both bind CodeSystem
         mii-cs-pro-eortc-qlq-c30. The CS MUST appear in the bundle exactly
         once even though two VS reference it.
 
         Reference: SDC IG Section 3.2.1 — Transitive dependencies
         """
-        q_id = pro_questionnaires["qlq_c30_variant_a"]["id"]
+        q_id = pro_questionnaires["qlq_c30"]["id"]
 
         response = await api_client.get(f"/api/questionnaires/{q_id}/$package")
         bundle = response.json()
@@ -196,7 +196,7 @@ class TestSDCPackageOperationCompliance:
 
         Reference: OperationDefinition-questionnaire-package parameter definition
         """
-        q_id = pro_questionnaires["qlq_c30_variant_a"]["id"]
+        q_id = pro_questionnaires["qlq_c30"]["id"]
 
         response_with = await api_client.get(
             f"/api/questionnaires/{q_id}/$package",
@@ -307,7 +307,7 @@ class TestSDCPackageOperationCompliance:
 
         Reference: SDC IG Section 3.2.1 - Dependency Resolution
         """
-        q_id = pro_questionnaires["qlq_c30_variant_a"]["id"]
+        q_id = pro_questionnaires["qlq_c30"]["id"]
 
         response = await api_client.get(f"/api/questionnaires/{q_id}/$package")
         bundle = response.json()

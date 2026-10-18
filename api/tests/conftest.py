@@ -430,7 +430,7 @@ async def load_test_fixtures(fhir_server):
 # Real MII PRO content — pre-loaded by the container at boot time
 # ============================================================================
 
-# Canonical URLs of MII PRO 2026.7.0 Questionnaires that the Form Manager
+# Canonical URLs of MII PRO 2027.0.0-ballot.1 Questionnaires that the Form Manager
 # image guarantees to ship and load. Tests that hit these can skip the
 # fragile upload-then-resolve dance — content is deterministic and always
 # present.
@@ -439,9 +439,8 @@ PRO_QUESTIONNAIRE_CANONICALS = {
     # 2 external answerValueSet bindings (qlq-c30-scale-4pt / -7pt),
     # each VS in turn binds CodeSystem mii-cs-pro-eortc-qlq-c30 →
     # full Q → VS → CS chain, ideal for transitive-dep tests.
-    "qlq_c30_variant_a": f"{PRO_NAMESPACE}/mii-qst-pro-eortc-qlq-c30-variant-a",
-    # 2 contained #-fragment ValueSet bindings — exercises the
-    # contained-VS code path (separate from external canonical resolution).
+    # (Since 2027 the plain QLQ-C30 carries this chain; the former
+    # variant-a/-b Questionnaires were dropped upstream.)
     "qlq_c30":           f"{PRO_NAMESPACE}/mii-qst-pro-eortc-qlq-c30",
     # No answerValueSet at all — for baseline structural tests
     # (Bundle.type, first-entry, no-deps minimal bundle, SDC tags, etc.).

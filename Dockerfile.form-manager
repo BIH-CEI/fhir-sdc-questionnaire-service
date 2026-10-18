@@ -6,10 +6,10 @@
 # der Sidecar fordert deshalb per expression= nur die Skalar-Defines an.
 # Details: ARCHITECTURE.md -> 'clinical-reasoning >= 4.9 Parameters-Converter'.
 ARG HAPI_BASE=hapiproject/hapi@sha256:d7f38d3676900b07e8a7d3500426eaf8d90ea9ced9a6726416f080f68e230fb0
-ARG MII_PRO_VERSION=2026.7.0
-ARG MII_PRO_SHA256=2dad397acfca53fef50112e8b049ba1434d76690dcc4660579c426bc843a7a15
-ARG SDC_VERSION=3.0.0
-ARG SDC_SHA256=be5c3f0a7f82e072b40739e05fb68f3e58e44c9bd040cd901b1b55c62f23dca2
+ARG MII_PRO_VERSION=2027.0.0-ballot.1
+ARG MII_PRO_SHA256=5085656d8ff49cf10a2e14f9f80c0b6f683c51a1dd190838761604df1e57f0db
+ARG SDC_VERSION=4.0.0
+ARG SDC_SHA256=d785be8474c7ec7988e32e326430d9ca4aeb2cac4a1f195022e4d6f7dc5c5291
 # "Our" versions — single source of truth lives in versions.env at repo root.
 # CI sources versions.env and passes --build-arg; docker-compose reads it via
 # `env_file:`. NO defaults here on purpose: builds must be explicit about the

@@ -19,8 +19,8 @@ PACKAGES = [
     # Dependencies first
     {"name": "hl7.fhir.r4.core",                              "version": "4.0.1"},
     {"name": "hl7.terminology",                                "version": "6.4.0"},
-    {"name": "hl7.fhir.uv.sdc",                               "version": "3.0.0"},
-    {"name": "de.medizininformatikinitiative.kerndatensatz.meta", "version": "2026.0.0"},
+    {"name": "hl7.fhir.uv.sdc",                               "version": "4.0.0"},
+    {"name": "de.medizininformatikinitiative.kerndatensatz.meta", "version": "2027.0.0-ballot"},
     # MII PRO is loaded via hapi-config/application.yaml (local-patched 2026.2.1-local.1).
     # Do not re-install via $install-package here: HAPI would fetch 2026.2.0 from
     # Simplifier, which contains the broken ConceptMap that crashes the boot.
