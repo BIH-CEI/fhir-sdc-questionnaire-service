@@ -21,7 +21,7 @@ HAPI is the Form Manager. It stores and serves all content and runs `$populate`,
    - Downloads MII PRO and SDC from `packages.simplifier.net` and verifies their SHA-256.
    - Copies the vendored `local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz`.
    - Applies the **draft→active patch** to SDC and PCOR-MII. For SD, CS, VS, SearchParameter, OperationDefinition, CapabilityStatement, StructureMap, ImplementationGuide and ConceptMap, a top-level `status: draft` is set to `active` and the package is re-packed.
-   - Why the patch: HAPI's package installer skips draft resources. SDC 3.0.0 ships everything as draft, and PCOR-MII ships all its terminology as draft. Without the patch, the PCOR answerValueSets would not resolve.
+   - Why the patch: HAPI's package installer skips draft resources. SDC 3.0.0 shipped everything as draft (4.0.0: 8 SDs), and PCOR-MII ships all its terminology as draft. Without the patch, the PCOR answerValueSets would not resolve.
    - MII PRO is used unchanged.
 2. **Runtime stage.** Based on `hapiproject/hapi@sha256:…` (v8.12.0-1, distroless).
    - Packages go to `/data/hapi/local-packages/`, including the vendored PRO Library tgz.
@@ -49,7 +49,7 @@ ISiK and the Simplifier MII PRO ballot entries are commented out. ISiK fails sna
 2. **Instance loader.** `hapi-scripts/load-instance-resources.sh` waits for `/metadata`, then PUTs the types the installer skips: Questionnaire, Library (incl. the CRMI release manifest), Provenance, ImplementationGuide, ObservationDefinition, TestScript.
    - The image is distroless, so the loader runs outside it. In compose it is the `pro-library-loader` service (alpine, mounts `./local-packages`). In CI it runs on the runner.
    - **Version retention:** only the newest version per package is loaded, and it keeps the package's resource ids. Older tarballs are skipped unless `RETAIN_PRIOR_VERSIONS=1`. With that flag they are created by conditional update on `(url, version)` and do not overwrite current ids.
-3. **Dependency installer (compose only).** `mii-pro-installer` runs `scripts/install-mii-pro.py`, which installs `hl7.fhir.r4.core` 4.0.1, `hl7.terminology` 6.4.0, SDC 3.0.0 and MII meta 2026.0.0 via `$install-package`. This step needs registry access.
+3. **Dependency installer (compose only).** `mii-pro-installer` runs `scripts/install-mii-pro.py`, which installs `hl7.fhir.r4.core` 4.0.1, `hl7.terminology` 6.4.0, SDC 4.0.0 and MII meta 2027.0.0-ballot via `$install-package`. This step needs registry access.
 
 There is no HAPI healthcheck (no curl in a distroless image). Ordering relies on `depends_on`, the loader's `/metadata` polling, and a `sleep 30` before FastAPI starts.
 
