@@ -1,437 +1,136 @@
-# SDC Form Manager Architecture
-
-## Overview
-
-This project implements a **custom SDC-compliant Form Manager** that wraps HAPI FHIR to provide SDC-specific operations that HAPI doesn't natively support.
-
-## Architecture Diagram
+# Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Client / Tests                     │
-└───────────────────┬─────────────────────────────────┘
-                    │
-                    v
-┌─────────────────────────────────────────────────────┐
-│            FastAPI Application (Port 8001)           │
-│  ┌─────────────────────────────────────────────┐   │
-│  │  SDC Operations (Custom Implementation)      │   │
-│  │  - $package (PackageService)                │   │
-│  │  - $localize (LocalizationService)          │   │
-│  │  - Questionnaire CRUD with validation       │   │
-│  └──────────────┬──────────────────────────────┘   │
-└─────────────────┼──────────────────────────────────┘
-                  │
-                  │ HTTP/FHIR API calls
-                  v
-┌─────────────────────────────────────────────────────┐
-│         HAPI FHIR Server (Port 8081/fhir)            │
-│  ┌─────────────────────────────────────────────┐   │
-│  │  Standard FHIR Operations                    │   │
-│  │  - CRUD (Create, Read, Update, Delete)       │   │
-│  │  - Search                                    │   │
-│  │  - Basic validation                          │   │
-│  │  - Resource storage                          │   │
-│  └─────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-           │
-           v
-    ┌──────────────┐
-    │   Database   │
-    │  (H2/MySQL)  │
-    └──────────────┘
+        clients (renderers, tests, consumer sites)
+           │ FHIR REST                │ /api/questionnaires/...
+           v                          v
+┌─────────────────────────────┐  ┌─────────────────────────┐
+│ Form Manager (HAPI 8.12)    │<─│ FastAPI sidecar (api/)  │
+│ SDC, MII PRO, PRO Library,  │  │ $package, $localize,    │
+│ PCOR-MII; CR on; Lucene     │  │ $compute-and-extract    │
+└──────────────┬──────────────┘  └─────────────────────────┘
+               │
+       Postgres (dev) / H2 (test)
 ```
 
-## Component Responsibilities
-
-### FastAPI Application (`api/app/`)
-
-**Purpose:** Provide SDC-compliant Form Manager capabilities
-
-**Key Components:**
-- **`routers/questionnaires.py`** - REST endpoints for SDC operations
-- **`services/package_service.py`** - Implements $package operation
-  - Resolves transitive dependencies (ValueSet → CodeSystem chains)
-  - Assembles Bundle with all required resources
-  - Handles circular dependencies
-- **`services/localization_service.py`** - Implements $localize operation
-  - Language translation
-  - Locale-specific rendering
-- **`services/fhir_client.py`** - HAPI communication layer
+HAPI is the Form Manager. It stores and serves all content and runs `$populate`, `$extract` and `Library/$evaluate` through its Clinical Reasoning (CR) module. The sidecar adds only what HAPI lacks, and talks to HAPI over plain FHIR REST (`FHIR_BASE_URL`).
 
-**Custom Operations (Not in HAPI):**
-- ✅ `GET /api/questionnaires/{id}/$package`
-- ✅ `POST /api/questionnaires/$package`
-- ✅ `GET /api/questionnaires/$package?url={canonical}`
-- ✅ `POST /api/questionnaires/{id}/$localize`
+## Image build (`Dockerfile.form-manager`)
 
-### HAPI FHIR Server
+1. **Fetch stage.**
+   - Downloads MII PRO and SDC from `packages.simplifier.net` and verifies their SHA-256.
+   - Copies the vendored `local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz`.
+   - Applies the **draft→active patch** to SDC and PCOR-MII. For SD, CS, VS, SearchParameter, OperationDefinition, CapabilityStatement, StructureMap, ImplementationGuide and ConceptMap, a top-level `status: draft` is set to `active` and the package is re-packed.
+   - Why the patch: HAPI's package installer skips draft resources. SDC 3.0.0 ships everything as draft, and PCOR-MII ships all its terminology as draft. Without the patch, the PCOR answerValueSets would not resolve.
+   - MII PRO is used unchanged.
+2. **Runtime stage.** Based on `hapiproject/hapi@sha256:…` (v8.12.0-1, distroless).
+   - Packages go to `/data/hapi/local-packages/`, including the vendored PRO Library tgz.
+   - `hapi-config/application.yaml` goes to `/data/hapi/`.
+   - `/data/hapi/lucene` is created empty and owned by the non-root user.
+   - ENV: `HAPI_FHIR_CR_ENABLED=true` plus the version variables. `application.yaml` interpolates the package versions from them, and the sidecar reads `FORM_MANAGER_VERSION`.
+   - OCI labels record the content versions.
 
-**Purpose:** FHIR-compliant data storage and basic operations
-
-**Provides:**
-- ✅ Resource storage (Questionnaire, ValueSet, CodeSystem, Library)
-- ✅ CRUD operations
-- ✅ Search parameters
-- ✅ Basic FHIR validation
-- ✅ CapabilityStatement
+`FORM_MANAGER_VERSION`, `PRO_LIBRARY_VERSION` and `PCOR_MII_VERSION` have no defaults. The Makefile and CI pass them from `versions.env`.
 
-**Does NOT Provide (as of HAPI v6.x):**
-- ❌ SDC $package operation
-- ❌ SDC $populate operation
-- ❌ SDC $extract operation
-- ❌ Custom $localize operation
+## HAPI configuration (`hapi-config/application.yaml`)
 
-## What the Tests Validate
+| Setting | Value / reason |
+|---------|----------------|
+| `implementationguides` | SDC, MII PRO, PCOR-MII and PRO Library from `file:///data/hapi/local-packages/…`, `STORE_AND_INSTALL`, `fetchDependencies: false`. No network at boot. |
+| `cr.enabled` | `true`, for `$populate`, `$extract` and `$evaluate` |
+| `validation.enabled` / `requests_enabled` | `false`. Validation belongs at publication time, and upstream Questionnaires have non-fatal issues that would block loading. |
+| `spring.jpa.properties.hibernate.search.*` | Lucene on the local filesystem at `/data/hapi/lucene` |
 
-### Integration Tests (`api/tests/integration/`)
+ISiK and the Simplifier MII PRO ballot entries are commented out. ISiK fails snapshot generation at boot.
 
-Test the **FastAPI application** endpoints:
+## Boot sequence
 
-```python
-async def test_create_questionnaire(api_client):
-    # Tests: POST /api/questionnaires/
-    # Validates: FastAPI → HAPI communication
-    response = await api_client.post("/api/questionnaires/", json=questionnaire)
-```
+1. **Package installer.** HAPI installs only the canonical types from the packages: NamingSystem, CodeSystem, ValueSet, StructureDefinition, ConceptMap, SearchParameter, Subscription.
+2. **Instance loader.** `hapi-scripts/load-instance-resources.sh` waits for `/metadata`, then PUTs the types the installer skips: Questionnaire, Library (incl. the CRMI release manifest), Provenance, ImplementationGuide, ObservationDefinition, TestScript.
+   - The image is distroless, so the loader runs outside it. In compose it is the `pro-library-loader` service (alpine, mounts `./local-packages`). In CI it runs on the runner.
+   - **Version retention:** only the newest version per package is loaded, and it keeps the package's resource ids. Older tarballs are skipped unless `RETAIN_PRIOR_VERSIONS=1`. With that flag they are created by conditional update on `(url, version)` and do not overwrite current ids.
+3. **Dependency installer (compose only).** `mii-pro-installer` runs `scripts/install-mii-pro.py`, which installs `hl7.fhir.r4.core` 4.0.1, `hl7.terminology` 6.4.0, SDC 3.0.0 and MII meta 2026.0.0 via `$install-package`. This step needs registry access.
 
-**Fixture:** `api_client` → `http://localhost:8001`
+There is no HAPI healthcheck (no curl in a distroless image). Ordering relies on `depends_on`, the loader's `/metadata` polling, and a `sleep 30` before FastAPI starts.
 
-### SDC Compliance Tests (`api/tests/sdc_compliance/`)
+## Terminology and `ValueSet/$expand`
 
-Test **custom SDC operations** implemented in FastAPI:
+The packages ship ValueSets **without expansion**. Clients expand `answerValueSet`s at runtime against this server. HAPI resolves concepts of DB-stored CodeSystems through Hibernate Search; without the Lucene index, `$expand` fails with `HSEARCH800001`.
 
-```python
-async def test_package_operation(api_client, load_test_fixtures):
-    # Tests: GET /api/questionnaires/{id}/$package
-    # Validates: Custom PackageService implementation
-    response = await api_client.get(f"/api/questionnaires/{id}/$package")
-```
+- The index is the named volume `hapi_lucene`, next to `postgres_data`.
+- If DB and index get out of sync, for example when one volume is deleted, run a `$reindex`.
+- HAPI also caches installed package bytes in the DB. Re-vendoring a package under the same version has no effect on an existing DB until the package is removed or the DB is recreated.
 
-**Fixture:** `api_client` → `http://localhost:8001`
+## FastAPI sidecar (`api/`)
 
-**What's being tested:**
-- ✅ Our PackageService correctly queries HAPI for resources
-- ✅ Dependency resolution works (ValueSet → CodeSystem chains)
-- ✅ Bundle assembly follows SDC spec
-- ✅ Error handling for missing dependencies
+Routes under `/api/questionnaires` (`api/app/routers/questionnaires.py`):
 
-**What's NOT being tested:**
-- ❌ HAPI's native $package support (it doesn't have it)
-- ❌ Other FHIR servers' $package implementations
-
-### HAPI Direct Tests
+| Route | Service | Notes |
+|-------|---------|-------|
+| `GET /`, `GET /{id}`, `POST /`, `PUT /{id}`, `DELETE /{id}`, `GET /search` | `fhir_client.py` | Proxy to HAPI |
+| `$package`: `GET /{id}/$package`, `GET /$package?url=`, `POST /$package` | `package_service.py` | Collection Bundle: Questionnaire, answerValueSets plus their CodeSystems, `cqf-library` Libraries (transitively), `targetStructureMap`s. Missing dependencies become OperationOutcome warnings. Limits: 100 entries, 20 MB. |
+| `$localize`: `GET /{id}/$localize`, `GET /$localize`, `POST /$localize`, `GET /{id}/$languages` | `localization_service.py` | One-language rendering of a multilingual Questionnaire |
+| `POST /{id}/$compute-and-extract` | `scoring_extract_service.py` | See below |
 
-Tests that interact **directly with HAPI** (bypassing FastAPI):
+Also `POST /api/pro-ctcae/score` and `GET /health` (reports `FORM_MANAGER_VERSION`). Literal `$op` routes are sorted ahead of `/{id}`, so `$package` is never forwarded to HAPI as an id.
 
-```python
-async def test_hapi_search(hapi_client):
-    # Tests: GET http://localhost:8081/fhir/Questionnaire?status=active
-    # Validates: HAPI's search capabilities
-    response = await hapi_client.get("/Questionnaire?status=active")
-```
+**`$compute-and-extract`** bridges a CR gap: HAPI CR does not evaluate `sdc-calculatedExpression` during `$populate` or `$extract`. The sidecar:
 
-**Fixture:** `hapi_client` → `http://localhost:8081/fhir`
-
-### Known HAPI Limitations (Documented with xfail)
+1. Reads the Questionnaire and resolves its `cqf-library`.
+2. Calls `Library/$evaluate` for the subject.
+3. Builds Observations generically from the content:
+   - `item.code` becomes `Observation.code`.
+   - The item's CQL `calculatedExpression` names the define.
+   - `ObservationDefinition.qualifiedInterval` supplies the interpretation.
+4. Returns them persisted (collection Bundle) or, with `persist=false`, as a transaction Bundle.
 
-```python
-@pytest.mark.xfail(
-    reason="HAPI FHIR does not natively support $package operation",
-    strict=True
-)
-async def test_hapi_does_not_support_package_natively(hapi_client):
-    """
-    This test documents that HAPI doesn't support $package.
-    Expected to fail - that's why we built our own implementation!
-    """
-    response = await hapi_client.get(f"/Questionnaire/{id}/$package")
-    # This will fail (404 or similar) - and that's expected!
-```
-
-## Multi-Server Support
-
-The test suite supports testing against different FHIR servers:
-
-```bash
-# Test against HAPI (default)
-pytest tests/ --fhir-server=hapi -v
-
-# Test against Aidbox
-pytest tests/ --fhir-server=aidbox -v
-
-# Custom server
-pytest tests/ --fhir-url=http://custom-server:8080/fhir -v
-```
-
-**What changes:**
-- `hapi_client` / `fhir_server` fixture points to different server
-- FastAPI still implements $package (server-agnostic)
-- Tests validate our implementation works with different backends
-
-## Key Design Decisions
-
-### Why Wrap HAPI?
-
-1. **HAPI doesn't support SDC operations natively**
-   - No $package, $populate, $extract operations
-   - We need these for SDC compliance
-
-2. **Custom business logic**
-   - Dependency resolution with circular reference handling
-   - Localization support
-   - Enhanced validation
-
-3. **Server-agnostic architecture**
-   - Can swap HAPI for Aidbox, Firely, Azure FHIR
-   - Our SDC logic stays the same
-
-### Why Not Extend HAPI Directly?
-
-1. **Separation of concerns** - FHIR storage vs. SDC operations
-2. **Easier testing** - Mock FHIR client, test SDC logic independently
-3. **Language choice** - Python FastAPI vs Java HAPI
-4. **Deployment flexibility** - Can scale FastAPI and HAPI independently
-
-### Docker Compose Architecture Decisions
-
-#### Test vs Production Environments
-
-We maintain two separate Docker Compose configurations:
-
-1. **Production (`docker-compose.yml`)**
-   - PostgreSQL + HAPI FHIR + FastAPI
-   - Persistent volumes for data storage
-   - HAPI uses PostgreSQL database
-   - Ports: 8080 (HAPI), 8000 (FastAPI), 5432 (PostgreSQL)
-   - Network name: `fhir-network`
-   - Use case: Development and production deployment
-
-2. **Test (`docker-compose.test.yml`)**
-   - HAPI FHIR + FastAPI only (no PostgreSQL)
-   - HAPI uses in-memory H2 database
-   - Ports: 8081 (HAPI), 8001 (FastAPI)
-   - Network name: `fhir-sdc-test-network`
-   - Use case: CI/CD and local testing
-
-**Rationale:**
-- Test environment needs to be fast (H2 in-memory) and isolated
-- Production needs data persistence (PostgreSQL with volumes)
-- Different ports prevent conflicts when running both simultaneously
-- Separate networks ensure complete isolation
-
-#### Healthcheck Strategy
-
-**Production Environment:**
-- PostgreSQL: Has healthcheck using `pg_isready`
-- FastAPI: Has healthcheck using `curl http://localhost:8000/health`
-- HAPI: No healthcheck (container doesn't include curl/wget/ls)
-- **Solution**: Use `depends_on` with service_healthy condition for PostgreSQL, and 30-second sleep delay for HAPI startup
-
-**Test Environment:**
-- HAPI: No healthcheck
-- FastAPI: No explicit healthcheck in compose file
-- **Solution**: Tests wait for servers using retry logic in conftest.py fixtures
-
-**Rationale:**
-- HAPI container lacks shell utilities for healthchecks
-- Adding healthcheck dependencies would require custom HAPI image
-- Sleep delays + application-level retries are simpler and sufficient
-- Tests are responsible for verifying server readiness (better error messages)
-
-#### Environment Variable Configuration
-
-**Test Environment (`docker-compose.test.yml`):**
-```yaml
-environment:
-  FHIR_BASE_URL: http://hapi-fhir-test:8080/fhir  # Docker network name
-  API_BASE_URL: http://localhost:8000              # For external access
-```
-
-**Test Configuration (`conftest.py`):**
-```python
-SERVER_PROFILES = {
-    "hapi": {
-        "base_url": os.getenv("FHIR_BASE_URL", "http://localhost:8081/fhir"),
-        # ...
-    }
-}
-```
-
-**Rationale:**
-- Tests running inside Docker containers use Docker network names (e.g., `hapi-fhir-test`)
-- Tests running on host use `localhost` with mapped ports
-- Environment variables allow flexibility without code changes
-- `os.getenv()` in conftest.py enables environment-based configuration
-
-#### Docker Networking
-
-**Key Decision**: Use Docker network names for inter-container communication
-
-**Example:**
-- FastAPI container accesses HAPI at: `http://hapi-fhir-test:8080/fhir`
-- Host machine accesses HAPI at: `http://localhost:8081/fhir`
-
-**Rationale:**
-- Docker's internal DNS resolves service names to container IPs
-- Avoids port mapping issues and network conflicts
-- More reliable than localhost (which can fail in Docker-in-Docker scenarios)
-- Follows Docker Compose best practices
-
-#### Volume Management and Cleanup
-
-**Production Volumes:**
-- `postgres_data`: PostgreSQL database files
-- `hapi_data`: HAPI configuration and work files
-
-**Test Volumes:**
-- None (ephemeral containers)
-- Test data deleted on container removal
-
-**Cleanup Strategy:**
-```bash
-# Clean test environment (safe, no data loss)
-docker-compose -f docker-compose.test.yml down -v
-
-# Clean production (DESTROYS DATA - use carefully)
-docker-compose down -v
-```
-
-**Rationale:**
-- Test isolation requires clean state between runs
-- Production data persistence requires named volumes
-- Explicit volume flags prevent accidental data loss
-- Test fixtures handle resource cleanup programmatically
-
-#### Test Isolation Strategy
-
-**Per-Test Resource Cleanup:**
-- Fixtures like `clean_questionnaire`, `clean_valueset`, `clean_codesystem`
-- Track created resource IDs and delete in teardown
-- Each test gets isolated resources
-
-**Optional Full Cleanup:**
-- `cleanup_all_resources` fixture (not run by default)
-- Deletes ALL test resources across resource types
-- Use explicitly when test needs completely clean database
-
-**Rationale:**
-- Per-test cleanup prevents test interference
-- Optional full cleanup handles edge cases
-- Balance between isolation and test speed
-- Supports both parallel and sequential test execution
-
-#### HAPI Configuration
-
-**Test HAPI (`docker-compose.test.yml`):**
-```yaml
-environment:
-  hapi.fhir.validation.requests_enabled: true
-  hapi.fhir.enable_repository_validating_interceptor: true
-  spring.datasource.url: jdbc:h2:mem:testdb
-```
-
-**Production HAPI (`docker-compose.yml`):**
-```yaml
-environment:
-  hapi.fhir.cql_enabled: true
-  hapi.fhir.validation_enabled: true
-  spring.datasource.url: jdbc:postgresql://db:5432/${POSTGRES_DB}
-```
-
-**Rationale:**
-- Test HAPI prioritizes speed (H2 in-memory) over features
-- Production HAPI enables full SDC capabilities (CQL for $populate/$extract)
-- Both validate requests to catch FHIR compliance issues early
-- Configuration via environment variables allows easy tuning without rebuilding images
-
-## Data Flow Example: $package Operation
-
-```
-1. Client calls: GET /api/questionnaires/123/$package
-
-2. FastAPI receives request
-   └─> routers/questionnaires.py::package_questionnaire_by_id()
-
-3. PackageService.create_package()
-   ├─> Fetch Questionnaire from HAPI
-   │   └─> GET http://localhost:8081/fhir/Questionnaire/123
-   │
-   ├─> Extract answerValueSet references
-   │   └─> ["http://example.org/ValueSet/vs1", ...]
-   │
-   ├─> Fetch each ValueSet from HAPI
-   │   └─> GET http://localhost:8081/fhir/ValueSet?url=http://example.org/ValueSet/vs1
-   │
-   ├─> Extract CodeSystem references from ValueSets
-   │   └─> ["http://example.org/CodeSystem/cs1", ...]
-   │
-   ├─> Fetch each CodeSystem from HAPI
-   │   └─> GET http://localhost:8081/fhir/CodeSystem?url=http://example.org/CodeSystem/cs1
-   │
-   └─> Assemble Bundle
-       └─> {
-             "resourceType": "Bundle",
-             "type": "collection",
-             "entry": [
-               {"resource": {Questionnaire}},
-               {"resource": {ValueSet1}},
-               {"resource": {CodeSystem1}},
-               ...
-             ]
-           }
-
-4. Return Bundle to client
-```
-
-## Testing Strategy
-
-### 1. Unit Tests (Future)
-- Test PackageService in isolation with mocked FHIR client
-- Test dependency resolution logic
-- Test error handling
-
-### 2. Integration Tests (Current)
-- Test FastAPI endpoints with real HAPI backend
-- Validate request/response formats
-- Test error scenarios
-
-### 3. SDC Compliance Tests (Current)
-- Test against SDC IG requirements
-- Document requirement IDs in test docstrings
-- Track coverage (80% SHALL, 34% total)
-
-### 4. Multi-Server Tests (Supported)
-- Run same tests against HAPI, Aidbox, Firely
-- Use `server_profile` fixture for server-specific logic
-- Document known server differences with `@pytest.mark.xfail`
-
-## Environment Configuration
-
-```bash
-# Docker Compose Setup
-docker-compose up -d           # Start HAPI + FastAPI
-
-# Test Configuration
-FHIR_BASE_URL=http://localhost:8081/fhir   # HAPI server
-API_BASE_URL=http://localhost:8001         # FastAPI server
-
-# Runtime Configuration
-python api/app/main.py                      # Start FastAPI
-# HAPI runs on http://localhost:8081/fhir
-# FastAPI runs on http://localhost:8001
-```
-
-## Summary
-
-| Component | Role | Port | Implements SDC? |
-|-----------|------|------|-----------------|
-| FastAPI | SDC Operations | 8001 | ✅ Yes ($package, $localize) |
-| HAPI FHIR | Storage & CRUD | 8081 | ❌ No (just storage) |
-| Tests | Validation | N/A | Validates FastAPI's SDC implementation |
-
-**Bottom Line:**
-- **HAPI = Storage backend** (like a database)
-- **FastAPI = SDC Form Manager** (implements spec)
-- **Tests validate FastAPI**, not HAPI's SDC support
-- We **wrap** HAPI to add missing SDC functionality
+A new instrument needs only new content, no code change.
+
+## clinical-reasoning >= 4.9 Parameters-Converter
+
+HAPI 8.12 bundles cqf-fhir-cr 4.9.0 / CQL engine 5.0.0. `Library/$evaluate` **without** an `expression` filter fails as soon as a public define returns a resource with backbone children. Here that is `MostRecentResponse`, a whole QuestionnaireResponse:
+
+    Could not resolve inner FHIR type: QuestionnaireResponseItemAnswerComponent
+
+The failure is in converting the result back into `Parameters` (`CqlFhirParametersConverter`), not in CQL evaluation. The same call with `?expression=PHQ9TotalScore&expression=…` returns correct values.
+
+- **Workaround (implemented):** the sidecar requests only the defines named by the extract-flagged items' `calculatedExpression`. Keep this even after the upstream fix, because it also avoids serialising the whole QuestionnaireResponse per call.
+- **Upstream:** fixed in clinical-reasoning 4.12.0 (PR #1089). It arrives with the first HAPI release that bundles CR >= 4.12.
+- **Tripwire:** `test_unfiltered_evaluate_upstream_tripwire` is a strict xfail and fails loudly on the first image with a fixed converter. Update this section then.
+- **PRO Library hygiene:** declare helper defines such as `MostRecentResponse` as `private define`.
+
+## Consumer test network (`docker-compose.consumer-test.yml`)
+
+An overlay on `docker-compose.yml`. It shows that a downstream site can receive the content through standard FHIR.
+
+| Service | Role |
+|---------|------|
+| `consumer-hapi` + `consumer-db` | Second CR-enabled HAPI from the same image, host 8083, own Lucene volume |
+| `consumer-mii-pro-installer` | Dependency packages, as on the producer |
+| `consumer-crmi-sync` (`scripts/sync-from-crmi.py`) | Pulls the PRO Library CRMI release manifest `Library/release-0-1-4`, plus every `relatedArtifact` at its pinned version, from the producer |
+| `consumer-pcor-sync` (`scripts/sync-from-ig.py`) | Pulls PCOR-MII by walking the IG's `definition.resource[]` (examples only with `SYNC_EXAMPLES=1`) |
+| `lhc-forms` | nginx serving `lhc-forms/index.html` (lforms 42.2.2) on host 3004 |
+
+The producer cannot store the PCOR-MII ImplementationGuide (HTTP 422, placeholder Bundles). The IG sync therefore takes the resource list from the vendored package, while the content still comes from the producer. The sync jobs are one-shot; re-run them with `make consumer-resync`.
+
+Other compose files:
+
+- `docker-compose.test.yml`: H2, HAPI 8081, FastAPI 8001, no loader service (`make test-stack` and CI run the loader from the host).
+- `docker-compose.backup.yml`: optional Postgres backups.
+- `docker-compose.aidbox.yml`: legacy and unmaintained. It runs a plain Aidbox without any of the content.
+
+## CI and Renovate
+
+| Workflow | Does |
+|----------|------|
+| `test.yml` | Builds the image, starts the test stack, copies the packages out of the container, runs the loader, runs pytest with coverage. The Codecov upload is non-blocking. |
+| `build-and-publish.yml` | Builds and smoke-tests the image, then pushes multi-arch to GHCR on the default branch and on `v*` tags. Smoke checks: ≥ 20 MII PRO SDs; PRO Library PHQ-9 + manifest; PCOR `UKHDEDP` + `pcor-item-dictionary`; `$expand`. |
+| `auto-pin-pro-sha.yml` | On Renovate PRs that touch the Dockerfile: recomputes and commits `MII_PRO_SHA256` |
+| `auto-vendor-pcor-mii.yml` | On Renovate PRs that touch `versions.env`: runs `scripts/refresh-pcor-mii.sh` and commits the tgz |
+| `pages.yml` | Publishes `docs/` to GitHub Pages |
+
+`renovate.json` runs Mondays before 6am (Europe/Berlin):
+
+- **MII PRO:** Simplifier `dist-tags.latest`, matched on the Dockerfile ARG.
+- **PCOR-MII:** gh-pages `package.manifest.json`, matched on `versions.env`.
+- **SDC:** disabled, because a bump may need the patch list reviewed.

@@ -1,40 +1,47 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
+FHIR SDC Form Manager: a HAPI FHIR 8.12 image with SDC, MII PRO, PRO Library and PCOR-MII baked in, plus a FastAPI sidecar for `$package`, `$localize` and `$compute-and-extract`.
+Human docs: `README.md` (overview, versions, limitations), `ARCHITECTURE.md`, `TESTING.md`.
 
-## Quick Reference
+## Where things are
+
+| Path | What |
+|------|------|
+| `Dockerfile.form-manager` | Image build: digest-pinned HAPI, SHA-pinned MII PRO/SDC (ARGs), vendored PRO Library/PCOR-MII, draft→active patch |
+| `versions.env` | `FORM_MANAGER_VERSION`, `PRO_LIBRARY_VERSION`, `PCOR_MII_VERSION` |
+| `hapi-config/application.yaml` | Package install list, CR on, Lucene, validation off |
+| `hapi-scripts/load-instance-resources.sh` | Post-boot loader for Questionnaire/Library/… |
+| `api/app/` | FastAPI sidecar: `routers/questionnaires.py`, `services/{package,localization,scoring_extract}_service.py` |
+| `api/tests/` | pytest: `sdc_compliance/`, `integration/`, `fixtures/`, `conftest.py` |
+| `docker-compose.yml` / `.test.yml` / `.consumer-test.yml` | Dev stack (8095/8001) / test stack (8081/8001) / consumer overlay (8083, LHC-Forms 3004) |
+| `scripts/` | `refresh-pcor-mii.sh`, `sync-from-crmi.py`, `sync-from-ig.py`, `install-mii-pro.py`, backup/restore. The ISiK scripts, `install_mii_package.py` and `check-server-versions.*` are legacy. |
+| `local-packages/` | Vendored package tarballs |
+| `docs/` | Strategy docs + `index.html`; the whole folder is published by `pages.yml` |
+| `.github/workflows/` | `test.yml`, `build-and-publish.yml`, `auto-pin-pro-sha.yml`, `auto-vendor-pcor-mii.yml`, `pages.yml` |
+
+## Commands
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work atomically
-bd close <id>         # Complete work
-bd dolt push          # Push beads data to remote
+make build && make up            # dev stack (needs .env from .env.example)
+make test-stack && make test     # test stack (loader included), then pytest
+make consumer-up                 # consumer HAPI + CRMI/IG sync + LHC-Forms
+make refresh-pcor-mii            # re-vendor PCOR-MII; make bump-pcor-mii to follow upstream
 ```
 
-## Non-Interactive Shell Commands
+## Gotchas
 
-**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+- **HAPI's installer skips `status: draft` resources.** SDC and PCOR-MII are patched draft→active in `Dockerfile.form-manager`. A new package with draft content needs the same patch.
+- **HAPI's installer skips Questionnaire, Library, Provenance, ImplementationGuide, ObservationDefinition and TestScript.** `load-instance-resources.sh` PUTs them after boot. A stack without the loader has no Questionnaires. Only the newest package version keeps its ids (`RETAIN_PRIOR_VERSIONS=1` for older ones).
+- **HAPI caches package bytes in the DB.** A package re-vendored under the same version does not take effect on an existing DB. Recreate it (`docker compose down -v`).
+- **`ValueSet/$expand` needs the Lucene index** (Hibernate Search, volume `hapi_lucene`). Packages ship no expansions. If DB and index diverge, run `$reindex`.
+- **Versions live only in `versions.env` and the Dockerfile ARGs.** Do not hard-code them in config, compose or tests.
+- **Unfiltered `Library/$evaluate` fails on CR >= 4.9.** Always pass `expression=`. See ARCHITECTURE.md "clinical-reasoning >= 4.9 Parameters-Converter".
+- **Validation is off by design.** Do not "fix" tests by turning it on.
+- The parent `interop-prototypes/` is a container, not a repo. Run `git` and `bd` inside this directory.
 
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+## Non-interactive shell
 
-**Use these forms instead:**
-```bash
-# Force overwrite without prompting
-cp -f source dest           # NOT: cp source dest
-mv -f source dest           # NOT: mv source dest
-rm -f file                  # NOT: rm file
-
-# For recursive operations
-rm -rf directory            # NOT: rm -r directory
-cp -rf source dest          # NOT: cp -r source dest
-```
-
-**Other commands that may prompt:**
-- `scp` - use `-o BatchMode=yes` for non-interactive
-- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
-- `apt-get` - use `-y` flag
-- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
+`cp`, `mv` and `rm` may be aliased to `-i` and hang waiting for a prompt. Use `cp -f`, `mv -f`, `rm -f` / `rm -rf`. Use `-o BatchMode=yes` for `ssh`/`scp`, `apt-get -y`, and `HOMEBREW_NO_AUTO_UPDATE=1` for brew.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker

@@ -1,302 +1,65 @@
-# Testing Guide - Quick Start
+# Testing
 
-## Overview
+The pytest suite in `api/tests/` runs against a live stack: the Form Manager image plus the FastAPI sidecar. There are no mocked unit tests. Current CI result: **92 passed, 1 skipped, 2 xfailed**.
 
-This project includes a comprehensive test suite that validates:
-- ✅ **SDC Compliance** - Meets HL7 FHIR SDC Form Manager specification
-- ✅ **Integration Testing** - Tests against real HAPI FHIR server
-- ✅ **Failure Scenarios** - Error handling and edge cases
-
----
-
-## Quick Start
-
-### 1. Install Dependencies
+## Run locally (same steps as `.github/workflows/test.yml`)
 
 ```bash
-cd api
-pip install -r requirements.txt
-pip install -r requirements-test.txt
+pip install -r api/requirements.txt -r api/requirements-test.txt
+make test-stack                      # HAPI :8081 (H2 in-memory) + FastAPI :8001, then runs the
+                                     # instance loader over all packages (incl. those inside the image)
+make test                            # pytest tests/sdc_compliance/ tests/integration/ -v --tb=short
+docker compose -f docker-compose.test.yml down -v
 ```
 
-### 2. Start Test Environment
-
-```bash
-# From project root
-docker-compose -f docker-compose.test.yml up -d
-```
-
-This starts:
-- **HAPI FHIR Test Server** → `localhost:8081`
-- **FastAPI Test Server** → `localhost:8001`
-
-### 3. Run Tests
-
-```bash
-cd api
-
-# Run all tests
-pytest tests/ -v
-
-# Run SDC compliance tests only
-pytest tests/sdc_compliance/ -v
-
-# Run with coverage
-pytest tests/ --cov=app --cov-report=html
-```
-
-### 4. View Results
-
-```bash
-# Open coverage report
-open htmlcov/index.html  # macOS
-start htmlcov/index.html  # Windows
-xdg-open htmlcov/index.html  # Linux
-```
-
-### 5. Cleanup
-
-```bash
-docker-compose -f docker-compose.test.yml down -v
-```
-
----
-
-## Test Categories
-
-### SDC Compliance Tests 📋
-
-Tests that validate SDC Form Manager specification compliance:
-
-```bash
-pytest tests/sdc_compliance/ -v
-```
-
-**What it tests:**
-- $package operation returns correct Bundle structure
-- All dependencies (ValueSets, CodeSystems, Libraries) included
-- Missing dependencies generate OperationOutcome warnings
-- Supports all three endpoint variants (instance, type-level, canonical URL)
-- Bundle has correct SDC tags and metadata
-
-**Reference:** [SDC IG Form Manager CapabilityStatement](https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html)
-
----
-
-### Integration Tests 🔗
-
-Tests FastAPI proxy to HAPI FHIR with real server:
-
-```bash
-pytest tests/integration/ -v
-```
-
-**What it tests:**
-- Create, Read, Update, Delete (CRUD) operations
-- Search functionality (by status, title, etc.)
-- Error handling (404, 400, 500)
-- Concurrent modifications
-- Large payload handling
-
----
-
-### Failure Scenario Tests ⚠️
-
-Tests error handling and edge cases:
-
-```bash
-pytest -m failure_scenarios -v
-```
-
-**What it tests:**
-- HAPI server unreachable
-- Malformed JSON
-- Invalid resource types
-- Network timeouts
-- Concurrent updates
-
----
-
-## Common Commands
-
-```bash
-# Run specific test file
-pytest tests/sdc_compliance/test_package_operation.py -v
-
-# Run specific test
-pytest tests/sdc_compliance/test_package_operation.py::TestSDCPackageOperationCompliance::test_package_returns_collection_bundle -v
-
-# Run tests with specific marker
-pytest -m sdc_compliance -v
-
-# Run with detailed output
-pytest tests/ -v --tb=short --capture=no
-
-# Run fast tests only (skip slow ones)
-pytest -m "not slow" -v
-
-# Generate coverage report
-pytest tests/ --cov=app --cov-report=html --cov-report=term
-```
-
----
-
-## Test Markers
-
-| Marker | Description | Command |
-|--------|-------------|---------|
-| `sdc_compliance` | SDC specification tests | `pytest -m sdc_compliance` |
-| `integration` | Tests with HAPI FHIR | `pytest -m integration` |
-| `failure_scenarios` | Error handling tests | `pytest -m failure_scenarios` |
-| `slow` | Slow-running tests | `pytest -m slow` |
-
----
-
-## CI/CD
-
-Tests run automatically on:
-- Push to `master`, `main`, `develop` branches
-- Pull requests
-
-**GitHub Actions workflow:** `.github/workflows/test.yml`
-
-**View results:** Check the "Actions" tab in GitHub
-
----
-
-## Troubleshooting
-
-### Problem: "HAPI FHIR not ready after 120 seconds"
-
-**Solution:**
-```bash
-# Check Docker is running
-docker ps
-
-# View HAPI logs
-docker logs hapi-fhir-test
-
-# Restart containers
-docker-compose -f docker-compose.test.yml restart
-```
-
----
-
-### Problem: Tests fail with port conflicts
-
-**Solution:**
-```bash
-# Check what's using ports 8081, 8001
-netstat -an | grep 8081
-netstat -an | grep 8001
-
-# Stop existing containers
-docker-compose -f docker-compose.test.yml down
-
-# Or change ports in docker-compose.test.yml
-```
-
----
-
-### Problem: Fixtures not cleaning up
-
-**Solution:**
-```bash
-# Completely reset test environment
-docker-compose -f docker-compose.test.yml down -v
-docker-compose -f docker-compose.test.yml up -d --force-recreate
-```
-
----
-
-### Problem: Tests hanging indefinitely
-
-**Solution:**
-```bash
-# Check if services are responding
-curl http://localhost:8001/health
-curl http://localhost:8081/fhir/metadata
-
-# View logs
-docker-compose -f docker-compose.test.yml logs -f
-```
-
----
-
-## Test Data
-
-Sample FHIR resources used in tests:
-
-| Resource | Description | File |
-|----------|-------------|------|
-| PHQ-2 Questionnaire | Depression screening | `tests/fixtures/sample_resources.py` |
-| PHQ-2 ValueSet | Frequency answers | `tests/fixtures/sample_resources.py` |
-| Diabetes Questionnaire | Risk assessment | `tests/fixtures/sample_resources.py` |
-| Simple Text Questionnaire | No dependencies | `tests/fixtures/sample_resources.py` |
-
----
-
-## Writing New Tests
-
-### Example SDC Compliance Test
-
-```python
-import pytest
-
-@pytest.mark.sdc_compliance
-@pytest.mark.integration
-@pytest.mark.asyncio
-class TestMyNewRequirement:
-    """
-    SDC Requirement: [Description]
-    Reference: [SDC IG section]
-    """
-
-    async def test_my_requirement(self, api_client, load_test_fixtures):
-        """
-        Test: [What is being tested]
-
-        Given: [Preconditions]
-        When: [Action]
-        Then: [Expected result]
-        """
-        # Test code here
-        pass
-```
-
----
-
-## Resources
-
-- **Full Test Documentation**: `api/tests/README.md`
-- **SDC Implementation Guide**: https://build.fhir.org/ig/HL7/sdc/
-- **pytest Documentation**: https://docs.pytest.org/
-- **FHIR R4 Specification**: https://www.hl7.org/fhir/R4/
-
----
-
-## Coverage Goals
-
-| Component | Target | Status |
-|-----------|--------|--------|
-| Package Service | 90% | 🎯 |
-| Dependency Resolver | 95% | 🎯 |
-| API Endpoints | 80% | 🎯 |
-| Overall | 85% | 🎯 |
-
----
-
-## Summary
-
-```bash
-# Complete test workflow
-cd api
-pip install -r requirements.txt -r requirements-test.txt
-cd ..
-docker-compose -f docker-compose.test.yml up -d
-cd api
-pytest tests/ -v --cov=app --cov-report=html
-docker-compose -f docker-compose.test.yml down -v
-```
-
-**Questions?** See `api/tests/README.md` for detailed documentation.
+- Endpoints come from `FHIR_BASE_URL` (default `http://localhost:8081/fhir`) and `API_BASE_URL` (default `http://localhost:8001`).
+- The main stack also uses host port 8001, so do not run both at the same time.
+- Coverage: add `--cov=app --cov-report=html`. The report lands in `api/htmlcov/`.
+- Markers (`pytest.ini`, strict): `sdc_compliance`, `integration`, `failure_scenarios`, `slow`, `unit`.
+
+## Layout
+
+| Path | Covers |
+|------|--------|
+| `sdc_compliance/test_metadata.py` | CapabilityStatement presence, FHIR version, content |
+| `sdc_compliance/test_operation_outcome.py` | OperationOutcome structure on errors |
+| `sdc_compliance/test_package_operation.py` | Sidecar `$package`. See below. |
+| `integration/test_questionnaire_crud.py` | CRUD and search through the sidecar, HAPI failure scenarios |
+| `integration/test_pro_library_manifest.py` | PRO Library loaded at the pinned version; every CRMI manifest `relatedArtifact` resolves |
+| `integration/test_calculated_expression_extract.py` | Locks in that HAPI CR's `$extract` / `$populate` do not evaluate `calculatedExpression` |
+| `integration/test_compute_and_extract.py` | Sidecar `$compute-and-extract` end to end |
+| `integration/test_evaluate_converter_regression.py` | CR >= 4.9 converter regression, plus the upstream tripwire |
+| `integration/test_proctcae_scoring.py` | `/api/pro-ctcae/score` |
+| `fixtures/sample_resources.py` | Synthetic resources for cases the shipped content does not cover |
+
+`test_package_operation.py` tests:
+
+- Bundle shape
+- the Q→VS→CS chain on real MII PRO content
+- Library inclusion
+- missing, circular and deep dependencies
+- a HAPI-native sentinel
+
+Fixtures (`conftest.py`):
+
+- Most tests address content shipped in the image by canonical URL (`pro_questionnaires`).
+- Synthetic resources go through `clean_questionnaire` / `clean_valueset` / `clean_codesystem`, which delete them on teardown.
+- The PRO Library version comes from `PRO_LIBRARY_VERSION` or `versions.env`; never hard-code it.
+- `--fhir-server` / `--fhir-url` switch the target server. Only HAPI with the bundled content is maintained.
+
+## Expected non-passes
+
+| Test | Kind | Meaning |
+|------|------|---------|
+| `test_unfiltered_evaluate_upstream_tripwire` | strict xfail | Flips once HAPI ships CR >= 4.12. Then update [ARCHITECTURE.md](ARCHITECTURE.md#clinical-reasoning--49-parameters-converter). |
+| `test_hapi_native_package_is_partial` | xfail | HAPI's own `$package` still 500s on MII PRO PHQ-9 |
+| `test_create_questionnaire_missing_required_field` | skip | Request-time validation is off |
+
+## What CI checks
+
+- **`test.yml`** (push/PR to master, main, develop): image build, test stack, loader, the full pytest suite with coverage. The Codecov upload is non-blocking.
+- **`build-and-publish.yml`**: boots the freshly built image on its own before pushing to GHCR. It asserts:
+  - ≥ 20 MII PRO StructureDefinitions at the pinned version
+  - PRO Library PHQ-9 and release manifest
+  - PCOR-MII `UKHDEDP` Questionnaire and `pcor-item-dictionary` CodeSystem
+  - a working `ValueSet/$expand`

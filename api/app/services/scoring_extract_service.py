@@ -98,7 +98,7 @@ class ScoringExtractService:
         # ('Could not resolve inner FHIR type: ...ItemAnswerComponent');
         # requesting only the scalar score defines sidesteps the converter
         # entirely. (b) It avoids serialising the full QuestionnaireResponse
-        # on every call. See KNOWN_LIMITATIONS.md.
+        # on every call. See ARCHITECTURE.md ("clinical-reasoning >= 4.9 Parameters-Converter").
         expressions = sorted({i["cql_expression"] for i in extract_items if i.get("cql_expression")})
         define_values = self._unpack_parameters(
             await self._invoke_evaluate(library_id, subject_reference, expressions)

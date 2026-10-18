@@ -1,119 +1,97 @@
 # FHIR SDC Form Manager
 
-A containerized FHIR Form Manager (HAPI FHIR + SDC IG + MII PRO IG, baked into the image) and the validation infrastructure that proves it actually conforms to the SDC Form Manager capability statement.
+A containerized FHIR SDC Form Manager. It is HAPI FHIR with the SDC IG, MII PRO, the BIH-CEI PRO Library and PCOR-MII baked into the image. A small FastAPI sidecar adds the SDC operations HAPI does not provide. CI boots every image and checks it against the [SDC Form Manager CapabilityStatement](https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html) before it is published to `ghcr.io/bih-cei/fhir-sdc-form-manager` (amd64/arm64).
 
-## What this repo is
-
-Two things, both shipped as code:
-
-1. **A Form Manager container** — `ghcr.io/BIH-CEI/fhir-sdc-form-manager`. HAPI FHIR with the SDC 3.0.0 IG and MII PRO IG already loaded at build time, ready to serve `$populate`, `$extract`, `$package`, `$localize`. No first-boot IG download, no terminology bootstrapping, no flaky cold-start.
-2. **Validation infrastructure** — CI smoke tests, SDC compliance tests, integration tests, FHIR validator integration. Every published image has been booted and asserted against the SDC Form Manager capability statement before the tag was pushed.
-
-What this repo is **not**: a workshop, a reference clinic, a demo deployment. Those experiments lived here previously and have been removed.
-
-## The container image
-
-```bash
-docker pull ghcr.io/BIH-CEI/fhir-sdc-form-manager:latest
-docker run -p 8080:8080 ghcr.io/BIH-CEI/fhir-sdc-form-manager:latest
-# FHIR endpoint: http://localhost:8080/fhir/metadata
-```
-
-Tags published on every `master` push:
-
-| Tag | Meaning |
-|-----|---------|
-| `latest` | Tip of `master` |
-| `mii-pro-<version>` | Pinned to a specific MII PRO release (currently `mii-pro-2026.7.0`) |
-| `sha-<short>` | Reproducible pointer to a git commit |
-| `v*` | Release tags |
-
-Multi-arch: `linux/amd64`, `linux/arm64`.
-
-### What's baked in
-
-| Component | Version | Source |
-|-----------|---------|--------|
-| HAPI FHIR | 8.12.0 (pinned by digest) | `hapiproject/hapi` |
-| SDC IG | 3.0.0 | `hl7.fhir.uv.sdc` (status patched `draft`→`active` so HAPI accepts it; see `Dockerfile.form-manager`) |
-| MII PRO IG | 2026.7.0 | `de.medizininformatikinitiative.kerndatensatz.pros` |
-| PCOR-MII IG | 0.3.0 | vendored official IG build package ([bih-cei.github.io/PCOR-MII](https://bih-cei.github.io/PCOR-MII/package.tgz)) |
-
-All upstream tarballs are SHA-256-verified during the image build. Renovate + `.github/workflows/auto-pin-pro-sha.yml` keep MII PRO pins fresh.
-
-## Validation infrastructure
-
-Living in `api/tests/` and `.github/workflows/build-and-publish.yml`:
-
-- **CI smoke test** — every PR boots the freshly built image, hits `/fhir/metadata`, and asserts ≥ 20 MII PRO `StructureDefinition`s loaded. If the image won't boot or the IG didn't install, the build fails.
-- **SDC compliance tests** (`api/tests/sdc_compliance/`) — assertions against the [SDC Form Manager CapabilityStatement](https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html): metadata, OperationOutcome shapes, `$package`.
-- **Integration tests** (`api/tests/integration/`) — Questionnaire CRUD, calculated-expression `$extract`, PRO-CTCAE scoring round-trip.
-- **FHIR Validator integration** — see `FHIR_VALIDATOR_INTEGRATION.md` for running the official HL7 validator alongside the test suite.
-- **Coverage map** — `TEST_REQUIREMENTS_MAPPING.md` tracks which SDC Form Manager requirements are covered by which tests.
-
-Run the full suite locally against a built image:
-
-```bash
-docker compose -f docker-compose.test.yml up -d
-cd api && pytest tests/sdc_compliance/ tests/integration/ -v
-```
-
-## Local development
-
-Full stack (Form Manager + Postgres + FastAPI sidecar):
+## Quick start
 
 ```bash
 cp .env.example .env
-docker compose up -d
-# HAPI:    http://localhost:8080/fhir
-# FastAPI: http://localhost:8000
+make build && make up
 ```
 
-The FastAPI sidecar in `api/` adds operations HAPI doesn't ship natively:
+| Service | URL |
+|---------|-----|
+| Form Manager (HAPI) | http://localhost:8095/fhir (`HAPI_PORT` overrides) |
+| FastAPI sidecar | http://localhost:8001 (OpenAPI at `/docs`) |
+| Consumer HAPI (`make consumer-up`) | http://localhost:8083/fhir |
+| LHC-Forms renderer (`make consumer-up`) | http://localhost:3004 |
 
-- `Questionnaire/$package` — bundle a Questionnaire with all its dependencies (ValueSets, CodeSystems, Libraries). HAPI's native `$package` is partial; see `api/tests/sdc_compliance/test_package_operation.py` for the divergence.
-- `Questionnaire/$localize` — produce a translated render of a multilingual Questionnaire.
-- PRO-CTCAE scoring endpoint.
+| Make target | Does |
+|-------------|------|
+| `up` / `down` / `build` / `logs` / `ps` | Main stack: Postgres, Form Manager, instance loader, dependency installer, FastAPI |
+| `test-stack` / `test` | Test stack (H2, HAPI 8081) and pytest. See [TESTING.md](TESTING.md). |
+| `consumer-up` / `consumer-down` / `consumer-logs` / `consumer-resync` | Consumer test network: a second HAPI pulls content from the producer |
+| `refresh-pcor-mii` / `bump-pcor-mii` | Re-vendor PCOR-MII at the pinned version, or follow upstream and bump `versions.env` |
 
-| Endpoint | Implementation |
-|----------|----------------|
-| `$populate`, `$extract` | HAPI (Clinical Reasoning module, baked-in) |
-| `$package` (full) | FastAPI sidecar |
-| `$localize` | FastAPI sidecar |
-| `$assemble` | Not implemented — see `ASSEMBLE_OPERATION_SUMMARY.md` for why |
+All targets load `versions.env`. A bare `docker run` of the image serves terminology and profiles only. Questionnaires and Libraries are added by the loader after boot (see [ARCHITECTURE.md](ARCHITECTURE.md)).
 
-## SDC capabilities
+## Bundled content and versions
 
-Implements the [SDC Form Manager CapabilityStatement](https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html):
+| Content | Version | Pinned in | Updated by |
+|---------|---------|-----------|------------|
+| Form Manager itself | 0.2.0 | `versions.env` `FORM_MANAGER_VERSION` | Manually |
+| HAPI FHIR | 8.12.0 (digest) | `Dockerfile.form-manager` `HAPI_BASE` | Manually |
+| SDC `hl7.fhir.uv.sdc` | 3.0.0 | Dockerfile ARGs `SDC_VERSION` / `SDC_SHA256` | Manually (Renovate disabled) |
+| MII PRO `de.medizininformatikinitiative.kerndatensatz.pros` | 2026.7.0 | Dockerfile ARGs `MII_PRO_VERSION` / `MII_PRO_SHA256` | Renovate; `auto-pin-pro-sha.yml` re-pins the SHA |
+| PRO Library `bih-cei.fhir.pro-library` | 0.1.4 | `versions.env` + vendored tgz in `local-packages/` | Manually |
+| PCOR-MII `pcor-mii` | 0.3.0 (gh-pages build of 2026-10-14) | `versions.env` + vendored tgz in `local-packages/` | Renovate (`auto-vendor-pcor-mii.yml`), or `make bump-pcor-mii` |
 
-- **SHALL resources**: `Questionnaire`, `ValueSet` (+ `$expand`, `$validate-code`), `CodeSystem` (+ `$lookup`), `Library` — all CRUD via HAPI.
-- **Operations**: `$populate` ✅ · `$extract` ✅ · `$package` ✅ · `$assemble` ❌ (intentionally out of scope, optional in spec).
+How the upstream packages are pinned:
 
-## Repo map
+- SDC and MII PRO are downloaded from Simplifier at build time and checked against their SHA-256.
+- PCOR-MII is vendored because its only artefact, the gh-pages `package.tgz`, is rebuilt with new bytes under the same version. `make refresh-pcor-mii` warns when that happens.
 
-| Path | Purpose |
+Image tags:
+
+- `latest`, `mii-pro-<v>` and `form-manager-<v>` on the default branch
+- `sha-<short>` on every published build
+- the git tag name for `v*` tags
+
+## Operations
+
+| Operation | Status | Implemented by |
+|-----------|--------|----------------|
+| CRUD and search: Questionnaire, ValueSet, CodeSystem, Library, … | Working | HAPI |
+| `ValueSet/$expand`, `$validate-code`, `CodeSystem/$lookup` | Working | HAPI (`$expand` needs the Lucene index) |
+| `Questionnaire/$populate`, `QuestionnaireResponse/$extract` | Working | HAPI Clinical Reasoning |
+| `Library/$evaluate` (CQL scoring) | Working | HAPI Clinical Reasoning |
+| `Questionnaire/$package` | Working | FastAPI (HAPI's native `$package` fails on MII PRO content) |
+| `Questionnaire/$localize` | Working | FastAPI |
+| `Questionnaire/$compute-and-extract` | Working | FastAPI: evaluates scoring CQL and builds Observations |
+| `Questionnaire/$assemble` | Intentionally not implemented | It is optional (MAY) in SDC, and no bundled Questionnaire is modular |
+
+## Deployment readiness
+
+Fine for demos and internal staging. **Not production-ready:**
+
+- No authentication. The sidecar calls HAPI unauthenticated (`api/app/services/fhir_client.py`, `authorization=None`) and exposes its own endpoints without auth.
+- CORS is `*` in the sidecar (`api/app/config.py`) and in HAPI's default `.env.example`.
+- `docker-compose.yml` is a dev setup:
+  - Postgres port 5433 is exposed and uses default credentials.
+  - uvicorn runs with `--reload` and a bind-mounted source tree.
+  - Startup ordering relies on sleeps.
+  - No restart policies, no TLS, no reverse proxy.
+- Request-time validation is off on purpose.
+- The planned central delivery model (NUM / mTLS) is not implemented.
+
+## Known limitations
+
+- **PCOR-MII ImplementationGuide cannot be stored** (HTTP 422).
+  - Cause: its example-Bundle references create placeholder Bundles without `type`, because `auto_create_placeholder_reference_targets=true`.
+  - Effect: the Questionnaires and terminology load fine. The consumer IG sync reads the resource list from the vendored package instead.
+- **HAPI caches package bytes in the DB.** An existing database keeps its old copy of a package re-vendored under the same version (e.g. PCOR-MII 0.3.0 from before the draft→active patch). Recreate the DB (`docker compose down -v`) or remove the package.
+- **Validation is off.** HAPI accepts structurally invalid resources. Validate at publication time, e.g. with the HL7 validator CLI.
+- **clinical-reasoning >= 4.9:** unfiltered `Library/$evaluate` fails on resource-valued defines. The sidecar works around it by requesting scalar defines only. Details are in [ARCHITECTURE.md](ARCHITECTURE.md#clinical-reasoning--49-parameters-converter).
+
+## Documentation
+
+| File | Content |
 |------|---------|
-| `Dockerfile.form-manager` | The container build — fetch + verify IGs, patch SDC status, install at boot |
-| `docker-compose.yml` | Local dev stack |
-| `docker-compose.test.yml` | CI / local test stack |
-| `api/` | FastAPI sidecar + test suite |
-| `hapi-config/`, `hapi-scripts/` | HAPI YAML config + entrypoint scripts |
-| `scripts/install-mii-pro.py`, `verify-mii-pro-load.py` | IG install / verify helpers |
-| `.github/workflows/build-and-publish.yml` | Build → smoke → compliance tests → publish to GHCR |
-| `.github/workflows/auto-pin-pro-sha.yml` | Renovate-style auto-pin of MII PRO SHA-256 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Image build, boot sequence, `$expand`, sidecar, consumer network, CI |
+| [TESTING.md](TESTING.md) | Running the tests, layout, expected xfails, CI checks |
+| [AGENTS.md](AGENTS.md) | Instructions for coding agents (paths, commands, gotchas, workflow) |
+| [docs/VISION.md](docs/VISION.md), [docs/REFERENCE_IMPLEMENTATION_PLAN.md](docs/REFERENCE_IMPLEMENTATION_PLAN.md), [docs/FUTURE_IDEAS.md](docs/FUTURE_IDEAS.md) | Strategy |
+| [docs/ARTIFACT_METADATA_POLICY.md](docs/ARTIFACT_METADATA_POLICY.md) | Artifact metadata policy |
+| [docs/SDC_FORM_MANAGER_REQUIREMENTS.md](docs/SDC_FORM_MANAGER_REQUIREMENTS.md) | SDC Form Manager requirement checklist |
 
-## Further reading
-
-- `ARCHITECTURE.md` — system design
-- `PRODUCTION_STATUS.md` — what's implemented vs planned
-- `KNOWN_LIMITATIONS.md` — what doesn't work
-- `SDC_FORM_MANAGER_REQUIREMENTS.md` — the 136-requirement conformance checklist
-- `TEST_REQUIREMENTS_MAPPING.md` — requirements → test coverage
-- `REFERENCE_IMPLEMENTATION_PLAN.md` — vision: drive PROM implementation cost toward zero
-- `FHIR_SERVER_VERSIONS.md` — pinned versions for reproducibility
-
-## References
-
-- [FHIR SDC Specification](https://build.fhir.org/ig/HL7/sdc/)
-- [MII Kerndatensatz PRO](https://simplifier.net/medizininformatikinitiative-modulpro)
-- [HAPI FHIR](https://hapifhir.io/)
+References: [FHIR SDC](https://build.fhir.org/ig/HL7/sdc/) · [MII KDS PRO](https://simplifier.net/medizininformatikinitiative-modulpro) · [PCOR-MII](https://bih-cei.github.io/PCOR-MII/) · [PRO Library](https://github.com/BIH-CEI/pro-library) · [HAPI FHIR](https://hapifhir.io/)

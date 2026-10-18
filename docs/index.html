@@ -200,7 +200,7 @@
             <h2>What this is</h2>
             <p>Two things, both shipped as code:</p>
             <ol style="margin-left: 1.5rem;">
-                <li style="margin-bottom: 0.6rem;"><strong>A container image</strong> — HAPI FHIR with SDC 3.0.0 and the MII PRO IG already loaded at build time. No first-boot IG download, no terminology bootstrap, no flaky cold start.</li>
+                <li style="margin-bottom: 0.6rem;"><strong>A container image</strong> — HAPI FHIR with SDC, MII PRO, the BIH-CEI PRO Library and PCOR-MII baked in at build time. No first-boot IG download, no terminology bootstrap, no flaky cold start.</li>
                 <li><strong>Validation infrastructure</strong> — CI smoke tests, SDC compliance tests, integration tests, FHIR Validator integration. Every published image has been booted and asserted against the SDC Form Manager capability statement before the tag was pushed.</li>
             </ol>
             <p class="muted" style="margin-top: 1rem;">This is not a workshop or a demo deployment. Those experiments lived here previously and have been removed.</p>
@@ -226,12 +226,14 @@ curl http://localhost:8080/fhir/metadata</code></pre>
                     <tr><th>Component</th><th>Version</th><th>Source</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td>HAPI FHIR</td><td><code>8.4.0</code> <span class="pill">pinned by digest</span></td><td><code>hapiproject/hapi</code></td></tr>
+                    <tr><td>HAPI FHIR</td><td><code>8.12</code> <span class="pill">pinned by digest</span></td><td><code>hapiproject/hapi</code></td></tr>
                     <tr><td>SDC IG</td><td><code>3.0.0</code></td><td><code>hl7.fhir.uv.sdc</code></td></tr>
-                    <tr><td>MII PRO IG</td><td><code>2026.3.0</code></td><td><code>de.medizininformatikinitiative.kerndatensatz.pros</code></td></tr>
+                    <tr><td>MII PRO IG</td><td><code>2026.7.0</code></td><td><code>de.medizininformatikinitiative.kerndatensatz.pros</code></td></tr>
+                    <tr><td>PRO Library</td><td><code>0.1.4</code></td><td><code>bih-cei.fhir.pro-library</code></td></tr>
+                    <tr><td>PCOR-MII</td><td><code>0.3.0</code></td><td><code>pcor-mii</code></td></tr>
                 </tbody>
             </table>
-            <p class="muted">Upstream tarballs are SHA-256-verified during the build. Renovate keeps the MII PRO pin fresh.</p>
+            <p class="muted">Upstream tarballs are SHA-256-verified during the build; Renovate keeps the MII PRO and PCOR-MII pins fresh. Authoritative pins: <a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service#bundled-content-and-versions">README</a>.</p>
         </section>
 
         <section id="tags">
@@ -241,7 +243,8 @@ curl http://localhost:8080/fhir/metadata</code></pre>
                 <thead><tr><th>Tag</th><th>Meaning</th></tr></thead>
                 <tbody>
                     <tr><td><code>latest</code></td><td>Tip of <code>master</code></td></tr>
-                    <tr><td><code>mii-pro-&lt;version&gt;</code></td><td>Pinned to a specific MII PRO release (currently <code>mii-pro-2026.3.0</code>)</td></tr>
+                    <tr><td><code>mii-pro-&lt;version&gt;</code></td><td>Pinned to a specific MII PRO release, e.g. <code>mii-pro-2026.7.0</code></td></tr>
+                    <tr><td><code>form-manager-&lt;version&gt;</code></td><td>Runtime version of this image (<code>FORM_MANAGER_VERSION</code>)</td></tr>
                     <tr><td><code>sha-&lt;short&gt;</code></td><td>Reproducible pointer to a git commit</td></tr>
                     <tr><td><code>v*</code></td><td>Release tags</td></tr>
                 </tbody>
@@ -253,11 +256,10 @@ curl http://localhost:8080/fhir/metadata</code></pre>
             <h2>Validation infrastructure</h2>
             <p>Living in <code>api/tests/</code> and <code>.github/workflows/build-and-publish.yml</code>:</p>
             <ul>
-                <li><strong>CI smoke test</strong> — every PR boots the freshly built image, hits <code>/fhir/metadata</code>, and asserts at least 20 MII PRO <code>StructureDefinition</code>s are loaded. If the image won't boot or the IG didn't install, the build fails.</li>
+                <li><strong>CI smoke test</strong> — every PR boots the freshly built image, hits <code>/fhir/metadata</code>, and asserts that MII PRO, the PRO Library (PHQ-9 + release manifest) and PCOR-MII (Questionnaires + terminology) are loaded and that <code>ValueSet/$expand</code> returns codes. If any of that fails, the build fails.</li>
                 <li><strong>SDC compliance tests</strong> (<code>api/tests/sdc_compliance/</code>) — assertions against the SDC Form Manager CapabilityStatement: metadata, OperationOutcome shapes, <code>$package</code>.</li>
                 <li><strong>Integration tests</strong> (<code>api/tests/integration/</code>) — Questionnaire CRUD, calculated-expression <code>$extract</code>, PRO-CTCAE scoring round-trip.</li>
-                <li><strong>FHIR Validator integration</strong> — official HL7 validator alongside the pytest suite (see <code>FHIR_VALIDATOR_INTEGRATION.md</code>).</li>
-                <li><strong>Coverage map</strong> — <code>TEST_REQUIREMENTS_MAPPING.md</code> tracks which SDC Form Manager requirements are covered by which tests.</li>
+                <li><strong>Consumer test network</strong> — a second HAPI pulls the content from this image (CRMI release manifest, PCOR-MII IG) and serves it to an LHC-Forms renderer. See <a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/blob/master/TESTING.md">TESTING.md</a>.</li>
             </ul>
         </section>
 
@@ -271,7 +273,9 @@ curl http://localhost:8080/fhir/metadata</code></pre>
                     <tr><td><code>$extract</code></td><td><span class="pill ok">Supported</span></td><td>HAPI Clinical Reasoning</td></tr>
                     <tr><td><code>$package</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar (HAPI native is partial)</td></tr>
                     <tr><td><code>$localize</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar</td></tr>
-                    <tr><td><code>$assemble</code></td><td><span class="pill no">Not implemented</span></td><td>Optional in spec — see <code>ASSEMBLE_OPERATION_SUMMARY.md</code></td></tr>
+                    <tr><td><code>ValueSet/$expand</code></td><td><span class="pill ok">Supported</span></td><td>HAPI (Lucene index) — packages ship unexpanded ValueSets, expand at runtime</td></tr>
+                    <tr><td><code>Library/$evaluate</code>, <code>$compute-and-extract</code></td><td><span class="pill ok">Supported</span></td><td>HAPI CQL + FastAPI sidecar (scores → Observations)</td></tr>
+                    <tr><td><code>$assemble</code></td><td><span class="pill no">Not implemented</span></td><td>Optional (MAY) in the spec; no bundled Questionnaire uses sub-questionnaires</td></tr>
                 </tbody>
             </table>
             <p>SHALL resources — <code>Questionnaire</code>, <code>ValueSet</code> (+ <code>$expand</code>, <code>$validate-code</code>), <code>CodeSystem</code> (+ <code>$lookup</code>), <code>Library</code> — all CRUD via HAPI.</p>
@@ -280,9 +284,9 @@ curl http://localhost:8080/fhir/metadata</code></pre>
         <section id="more">
             <h2>Learn more</h2>
             <ul>
-                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service">Source on GitHub</a> — README, architecture docs, requirements map</li>
+                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service">Source on GitHub</a> — README, architecture, testing</li>
                 <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/pkgs/container/fhir-sdc-form-manager">Container image on GHCR</a></li>
-                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/blob/master/FUTURE_IDEAS.md">Future ideas</a> — syndication, mTLS distribution</li>
+                <li><a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/blob/master/docs/FUTURE_IDEAS.md">Future ideas</a> — syndication, mTLS distribution</li>
                 <li><a href="https://build.fhir.org/ig/HL7/sdc/">FHIR SDC specification</a></li>
                 <li><a href="https://simplifier.net/medizininformatikinitiative-modulpro">MII Kerndatensatz PRO</a></li>
             </ul>

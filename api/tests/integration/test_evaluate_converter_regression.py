@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Regressionstests um den Parameters-Converter-Befund (2026-10-04).
 
-Hintergrund (KNOWN_LIMITATIONS.md → "clinical-reasoning >= 4.9
+Hintergrund (ARCHITECTURE.md → "clinical-reasoning >= 4.9
 Parameters-Converter"): Ab HAPI 8.12 (cqf-fhir-cql 4.9.0) scheitert
 `Library/$evaluate` OHNE expression-Filter, sobald ein oeffentliches Define
 eine Ressource mit Backbone-Kindern liefert — bei uns `MostRecentResponse`
@@ -19,7 +19,7 @@ die Parameters-Ressource bricht. Drei Tests sichern das in beide Richtungen:
 3. STOLPERDRAHT (strict xfail): Der UNgefilterte $evaluate ist als
    known-failing markiert. Fixt Upstream den Converter, kippt der Test auf
    XPASS und schlaegt wegen strict=True FEHL — das ist Absicht: Dann sind
-   KNOWN_LIMITATIONS zu aktualisieren, der expression-Filter wird optional,
+   ARCHITECTURE.md zu aktualisieren, der expression-Filter wird optional,
    und die private-define-Hygiene (pro-library 0.2.0) ist neu zu bewerten.
 """
 import pytest
@@ -101,8 +101,8 @@ async def test_filtered_evaluate_returns_requested_scalar_defines(fhir_server):
     reason=(
         "clinical-reasoning >= 4.9 (HAPI >= 8.12): CqlFhirParametersConverter "
         "kann resource-wertige Defines mit Backbone-Kindern (MostRecentResponse) "
-        "nicht in Parameters konvertieren — siehe KNOWN_LIMITATIONS.md. "
-        "XPASS heisst: Upstream hat gefixt -> KNOWN_LIMITATIONS aktualisieren, "
+        "nicht in Parameters konvertieren — siehe ARCHITECTURE.md. "
+        "XPASS heisst: Upstream hat gefixt -> ARCHITECTURE.md aktualisieren, "
         "expression-Filter-Zwang und private-define-Hygiene neu bewerten."
     ),
     strict=True,
