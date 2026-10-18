@@ -12,8 +12,7 @@ services:
         # purpose — Makefile / CI exports them before invoking compose).
         FORM_MANAGER_VERSION: ${FORM_MANAGER_VERSION}
         PRO_LIBRARY_VERSION: ${PRO_LIBRARY_VERSION}
-        MII_PRO_VERSION: ${MII_PRO_VERSION:-2026.3.0}
-        MII_PRO_SHA256: ${MII_PRO_SHA256:-02741f25dece9298f43c17753c82785bbd6d8c6097e129c7d353e812c2b6b701}
+        PCOR_MII_VERSION: ${PCOR_MII_VERSION}
     container_name: hapi-fhir-test
     ports:
       - "8081:8080"

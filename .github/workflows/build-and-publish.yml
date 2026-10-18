@@ -11,10 +11,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/fhir-sdc-form-manager
-  # MII PRO is external content with its own cadence — kept on its own
-  # variable here, NOT in versions.env (which only tracks "our" things:
-  # FORM_MANAGER_VERSION + PRO_LIBRARY_VERSION, sourced per-job below).
-  MII_PRO_VERSION: "2026.7.0"
 
 # Runs in parallel with the test workflow (test.yml). Both pipelines share
 # the same buildx GHA cache, so whichever boots second reuses layers and is
@@ -43,6 +39,9 @@ jobs:
           echo "FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}" >> "$GITHUB_ENV"
           echo "PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION}" >> "$GITHUB_ENV"
           echo "PCOR_MII_VERSION=${PCOR_MII_VERSION}" >> "$GITHUB_ENV"
+          # MII PRO / SDC: pinned (version + SHA) only in Dockerfile.form-manager,
+          # which Renovate bumps; read here for tags and smoke-test messages.
+          echo "MII_PRO_VERSION=$(grep -E '^ARG MII_PRO_VERSION=' Dockerfile.form-manager | cut -d= -f2)" >> "$GITHUB_ENV"
 
       - name: Compute image metadata
         id: meta
@@ -67,7 +66,6 @@ jobs:
             FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
             PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
             PCOR_MII_VERSION=${{ env.PCOR_MII_VERSION }}
-            MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -173,6 +171,5 @@ jobs:
             FORM_MANAGER_VERSION=${{ env.FORM_MANAGER_VERSION }}
             PRO_LIBRARY_VERSION=${{ env.PRO_LIBRARY_VERSION }}
             PCOR_MII_VERSION=${{ env.PCOR_MII_VERSION }}
-            MII_PRO_VERSION=${{ env.MII_PRO_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

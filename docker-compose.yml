@@ -26,13 +26,11 @@ services:
       context: .
       dockerfile: Dockerfile.form-manager
       args:
-        # "Our" versions — sourced from versions.env (env_file below); MII PRO
-        # is external content with its own cadence, kept on a separate var.
+        # "Our" versions — sourced from versions.env (env_file below). MII PRO
+        # and SDC (version + SHA) are pinned only in Dockerfile.form-manager.
         FORM_MANAGER_VERSION: ${FORM_MANAGER_VERSION}
         PRO_LIBRARY_VERSION: ${PRO_LIBRARY_VERSION}
         PCOR_MII_VERSION: ${PCOR_MII_VERSION}
-        MII_PRO_VERSION: ${MII_PRO_VERSION:-2026.7.0}
-        MII_PRO_SHA256: ${MII_PRO_SHA256:-2dad397acfca53fef50112e8b049ba1434d76690dcc4660579c426bc843a7a15}
     container_name: hapi-fhir-server
     env_file:
       - versions.env
@@ -71,7 +69,7 @@ services:
       hapi.fhir.narrative_enabled: true
 
       # Validation
-      hapi.fhir.validation_enabled: true
+      hapi.fhir.validation_enabled: false
       hapi.fhir.validation_server_url: http://hapi-fhir:8080/fhir
 
       # Clinical Reasoning / CQL - Enabled via application.yaml (hapi.fhir.cr.enabled: true)
@@ -101,7 +99,7 @@ services:
   # manifest), Provenance, ImplementationGuide, ObservationDefinition,
   # TestScript — must be PUT after boot. CI already does this; this
   # service mirrors it for local dev so that the producer FHIR endpoint
-  # exposes the full PRO Library content (including Library/release-0-1-3)
+  # exposes the full PRO Library content (including the CRMI release manifest Library)
   # that downstream CRMI consumers can pull via standard FHIR search.
   pro-library-loader:
     image: alpine:3.20

@@ -4,7 +4,7 @@
 # Hinweis: clinical-reasoning >= 4.9 (ab HAPI 8.12) kann resource-wertige
 # CQL-Defines mit Backbone-Kindern nicht mehr in Parameters konvertieren —
 # der Sidecar fordert deshalb per expression= nur die Skalar-Defines an.
-# Details: KNOWN_LIMITATIONS.md -> 'clinical-reasoning >= 4.9 Parameters-Converter'.
+# Details: ARCHITECTURE.md -> 'clinical-reasoning >= 4.9 Parameters-Converter'.
 ARG HAPI_BASE=hapiproject/hapi@sha256:d7f38d3676900b07e8a7d3500426eaf8d90ea9ced9a6726416f080f68e230fb0
 ARG MII_PRO_VERSION=2026.7.0
 ARG MII_PRO_SHA256=2dad397acfca53fef50112e8b049ba1434d76690dcc4660579c426bc843a7a15
@@ -114,6 +114,8 @@ ENV SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/hapi/ \
     HAPI_FHIR_CR_ENABLED=true \
     PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION} \
     PCOR_MII_VERSION=${PCOR_MII_VERSION} \
+    MII_PRO_VERSION=${MII_PRO_VERSION} \
+    SDC_VERSION=${SDC_VERSION} \
     FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}
 
 LABEL org.opencontainers.image.title="FHIR SDC Form Manager (HAPI + SDC + MII PRO + PRO Library)" \
@@ -126,6 +128,6 @@ LABEL org.opencontainers.image.title="FHIR SDC Form Manager (HAPI + SDC + MII PR
       org.hl7.fhir.uv.sdc.modifications="status:draft→active on SD/CS/VS for HAPI auto-install" \
       de.bih-cei.pro-library.version="${PRO_LIBRARY_VERSION}" \
       de.bih-cei.pro-library.source="https://github.com/BIH-CEI/pro-library" \
-      de.bih-cei.pro-library.status="provisional (0.x line; see github VISION.md §1a on authority gap)" \
+      de.bih-cei.pro-library.status="provisional (0.x line; see github docs/VISION.md §1a on authority gap)" \
       de.bih-cei.form-manager.version="${FORM_MANAGER_VERSION}" \
       de.bih-cei.form-manager.source="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service"

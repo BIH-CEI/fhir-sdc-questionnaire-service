@@ -46,21 +46,22 @@ hapi:
       # The build step in Dockerfile.form-manager flips status to "active" before bundling.
       sdc:
         name: hl7.fhir.uv.sdc
-        version: 3.0.0
+        version: ${SDC_VERSION}
         installMode: STORE_AND_INSTALL
-        packageUrl: file:///data/hapi/local-packages/hl7.fhir.uv.sdc-3.0.0.tgz
+        packageUrl: file:///data/hapi/local-packages/hl7.fhir.uv.sdc-${SDC_VERSION}.tgz
         reloadExisting: false
         fetchDependencies: false
+      # MII PRO / SDC versions come from the Dockerfile ARGs (propagated as ENV).
       mii_pros:
         name: de.medizininformatikinitiative.kerndatensatz.pros
-        version: 2026.7.0
+        version: ${MII_PRO_VERSION}
         installMode: STORE_AND_INSTALL
-        packageUrl: file:///data/hapi/local-packages/de.medizininformatikinitiative.kerndatensatz.pros-2026.7.0.tgz
+        packageUrl: file:///data/hapi/local-packages/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz
         reloadExisting: false
         fetchDependencies: false
 
       # PRO Library (BIH-CEI) — companion content package, loaded in parallel to MII PRO.
-      # 0.x line is provisional under BIH-CEI stewardship (see VISION.md §1a on the
+      # 0.x line is provisional under BIH-CEI stewardship (see docs/VISION.md §1a on the
       # authority gap). Derived from MII PRO 2026.3.0; SemVer per artefact.
       # Source: https://github.com/BIH-CEI/pro-library
       # Version interpolated from PRO_LIBRARY_VERSION env var (set by the
@@ -107,7 +108,7 @@ hapi:
     # Enabled for SDC profile validation
     # Request-time validation is intentionally OFF on this server.
     # Reasoning: validation belongs at publication time (in the dedicated
-    # Reference Validation Service container — VISION.md WP8b) and at
+    # Reference Validation Service container — docs/VISION.md WP8b) and at
     # consumer-side write time, NOT during our own bootstrap loading.
     # The MII PRO upstream Questionnaires (and our derivedFrom overlays)
     # have known non-fatal validation issues (e.g. translation extension

@@ -30,11 +30,19 @@ logs:
 ps:
 	docker compose ps
 
+# Same sequence as CI (test.yml): boot, then PUT the resource types HAPI's
+# installer skips. MII PRO + SDC tarballs only exist inside the image, so they
+# are copied out next to the vendored ones before the loader runs.
 test-stack:
 	docker compose -f docker-compose.test.yml up -d --build
+	until curl -sf http://localhost:8081/fhir/metadata -o /dev/null; do sleep 3; done
+	mkdir -p local-packages-merged
+	cp -f local-packages/*.tgz local-packages-merged/
+	docker cp hapi-fhir-test:/data/hapi/local-packages/. local-packages-merged/
+	HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages-merged ./hapi-scripts/load-instance-resources.sh
 
 test:
-	cd api && pytest tests/sdc_compliance/ tests/integration/ -v --tb=short
+	cd api && python3 -m pytest tests/sdc_compliance/ tests/integration/ -v --tb=short
 
 # Downstream consumer test network: producer Form Manager + a separate
 # CR-enabled HAPI that re-receives the SDC + MII PRO + PRO Library + PCOR-MII content,
