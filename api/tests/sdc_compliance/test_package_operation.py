@@ -627,9 +627,10 @@ class TestDependencyResolution:
         assert "http://example.org/CodeSystem/deep-nested" in cs_urls
 
     @pytest.mark.xfail(
-        reason="HAPI 8.4 CR's QuestionnairePackageProvider throws 500 on MII PRO "
-        "2026.3.0 PHQ-9 (regressed from partial-bundle behaviour previously "
-        "documented in commit eeb3492). Test kept as a regression sentinel: "
+        reason="HAPI CR's native Questionnaire/$package fails on MII PRO PHQ-9 "
+        "(500 since HAPI 8.4 / MII PRO 2026.3.0, still failing on HAPI 8.12 / "
+        "2026.7.0; earlier it returned a partial bundle, commit eeb3492). Test "
+        "kept as a regression sentinel: "
         "when HAPI either fixes the crash or starts returning an SDC-conformant "
         "Bundle, xfail flips to unexpected pass and we re-evaluate whether the "
         "FastAPI PackageService layer can be reduced to a thin proxy.",
