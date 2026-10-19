@@ -76,7 +76,8 @@ async def test_current_version_has_profiles_installed(fhir_server):
 async def test_unversioned_package_lookup_picks_current_version(api_client):
     r = await api_client.get("/api/questionnaires/$package", params={"url": PHQ9_URL, "include-dependencies": False})
     assert r.status_code == 200
-    assert r.json()["entry"][0]["resource"]["version"] == MII_PRO_VERSION
+    # entry[0] is the CRMI outcome manifest, entry[1] the Questionnaire
+    assert r.json()["entry"][1]["resource"]["version"] == MII_PRO_VERSION
 
 
 def _external_valueset_refs(q: dict) -> set:
@@ -107,13 +108,14 @@ async def test_retained_questionnaire_packages_with_its_own_terminology(fhir_ser
     r = await api_client.get("/api/questionnaires/$package", params={"url": q_old["url"], "version": old})
     assert r.status_code == 200, r.text[:300]
     entries = r.json()["entry"]
-    assert entries[0]["resource"]["version"] == old
+    manifest, questionnaire = entries[0]["resource"], entries[1]["resource"]
+    assert questionnaire["version"] == old
+    assert "contained" not in manifest, manifest.get("contained")  # no packaging messages
 
     by_type = {}
-    for e in entries[1:]:
+    for e in entries[2:]:
         res = e["resource"]
         by_type.setdefault(res["resourceType"], []).append(res)
-    assert "OperationOutcome" not in by_type, by_type.get("OperationOutcome")
     assert {vs["url"] for vs in by_type["ValueSet"]} >= _external_valueset_refs(q_old)
     assert {vs["version"] for vs in by_type["ValueSet"]} == {old}
     assert {cs["version"] for cs in by_type.get("CodeSystem", [])} <= {old}

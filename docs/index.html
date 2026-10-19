@@ -271,7 +271,7 @@ curl http://localhost:8080/fhir/metadata</code></pre>
                 <tbody>
                     <tr><td><code>$populate</code></td><td><span class="pill ok">Supported</span></td><td>HAPI Clinical Reasoning</td></tr>
                     <tr><td><code>$extract</code></td><td><span class="pill ok">Supported</span></td><td>HAPI Clinical Reasoning</td></tr>
-                    <tr><td><code>$package</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar (HAPI native is partial)</td></tr>
+                    <tr><td><code>$package</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar, CRMI package with outcome manifest (HAPI's native one crashes on MII PRO)</td></tr>
                     <tr><td><code>$localize</code></td><td><span class="pill ok">Supported</span></td><td>FastAPI sidecar</td></tr>
                     <tr><td><code>ValueSet/$expand</code></td><td><span class="pill ok">Supported</span></td><td>HAPI (Lucene index) — packages ship unexpanded ValueSets, expand at runtime</td></tr>
                     <tr><td><code>Library/$evaluate</code>, <code>$compute-and-extract</code></td><td><span class="pill ok">Supported</span></td><td>HAPI CQL + FastAPI sidecar (scores → Observations)</td></tr>

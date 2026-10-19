@@ -1,12 +1,14 @@
 """
-SDC $package — sidecar implementation (PackageService), end to end.
+$package — sidecar implementation (PackageService), end to end.
 
-SDC Form Manager CapabilityStatement:
-https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html
-
-"The Form Manager SHALL support the $package operation on Questionnaire
-resources to return a Bundle containing the Questionnaire and all referenced
-dependencies including ValueSets, CodeSystems, Libraries, and StructureMaps."
+$package is defined by CRMI (hl7.fhir.uv.crmi 2.0.0, OperationDefinition
+crmi-package); SDC 3.0.0/4.0.0 define no $package and their Form Manager
+CapabilityStatement does not list one. CRMI: "The first resource returned in
+the resulting package will be an outcome manifest" (Library asset-collection,
+crmi-manifestlibrary) carrying the packaging messages (cqf-messages →
+contained OperationOutcome); "Servers generating packages SHALL include all
+the dependency resources referenced by the artifact that are known to the
+server".
 
 DATA STRATEGY
 -------------
@@ -41,8 +43,29 @@ QLQ_C30_VS_7PT = f"{MII_PRO_BASE}/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-7pt"
 QLQ_C30_CS = f"{MII_PRO_BASE}/CodeSystem/mii-cs-pro-eortc-qlq-c30"
 
 
+CRMI_MANIFEST = "http://hl7.org/fhir/uv/crmi/StructureDefinition/crmi-manifestlibrary"
+
+
+def _manifest(bundle: dict) -> dict:
+    """The outcome manifest — CRMI: always the first resource."""
+    first = bundle["entry"][0]["resource"]
+    assert first["resourceType"] == "Library" and CRMI_MANIFEST in first["meta"]["profile"], first
+    return first
+
+
 def _of_type(bundle: dict, rtype: str) -> list:
-    return [e["resource"] for e in bundle["entry"] if e["resource"]["resourceType"] == rtype]
+    """Packaged artifacts of a type (the manifest itself excluded)."""
+    _manifest(bundle)
+    return [e["resource"] for e in bundle["entry"][1:] if e["resource"]["resourceType"] == rtype]
+
+
+def _messages(bundle: dict) -> list:
+    """Packaging issues: the manifest's contained OperationOutcome."""
+    manifest = _manifest(bundle)
+    assert not [e for e in bundle["entry"] if e["resource"]["resourceType"] == "OperationOutcome"], \
+        "messages belong in the manifest, not in a separate entry"
+    return [i for c in manifest.get("contained", []) if c["resourceType"] == "OperationOutcome"
+            for i in c["issue"]]
 
 
 class TestSDCPackageOperationCompliance:
@@ -58,15 +81,31 @@ class TestSDCPackageOperationCompliance:
         assert "timestamp" in bundle
         assert len(bundle["entry"]) >= 1
 
-    async def test_questionnaire_is_first_entry(self, api_client, pro_questionnaires):
-        """SDC: Questionnaire SHOULD be the first entry."""
+    async def test_outcome_manifest_first_then_questionnaire(self, api_client, pro_questionnaires):
+        """CRMI: the outcome manifest is the first resource; it names the
+        packaged Questionnaire (url|version) as its component."""
         phq9 = pro_questionnaires["phq_9"]
         bundle = (await api_client.get(f"/api/questionnaires/{phq9['id']}/$package")).json()
 
-        first = bundle["entry"][0]["resource"]
-        assert first["resourceType"] == "Questionnaire"
-        assert first["id"] == phq9["id"]
-        assert first["url"] == phq9["url"]
+        manifest = _manifest(bundle)
+        assert manifest["type"]["coding"][0]["code"] == "asset-collection"
+        assert "content" not in manifest
+        components = [r for r in manifest["relatedArtifact"] if r["type"] == "composed-of"]
+        assert [c["resource"] for c in components] == [f"{phq9['url']}|{phq9['version']}"]
+
+        second = bundle["entry"][1]["resource"]
+        assert (second["resourceType"], second["id"], second["url"]) == ("Questionnaire", phq9["id"], phq9["url"])
+
+    async def test_manifest_pins_dependency_versions(self, api_client, pro_questionnaires):
+        """Every packaged dependency appears as depends-on with the exact
+        url|version that was packaged — the consumer can verify the set."""
+        q = pro_questionnaires["qlq_c30"]
+        bundle = (await api_client.get(f"/api/questionnaires/{q['id']}/$package")).json()
+
+        depends_on = {r["resource"] for r in _manifest(bundle)["relatedArtifact"] if r["type"] == "depends-on"}
+        packaged = {f"{e['resource']['url']}|{e['resource']['version']}" for e in bundle["entry"][2:]}
+        assert packaged <= depends_on, f"packaged but not in manifest: {packaged - depends_on}"
+        assert f"{QLQ_C30_VS_4PT}|{q['version']}" in depends_on
 
     async def test_includes_referenced_valuesets_from_nested_items(self, api_client, pro_questionnaires):
         """SDC: SHALL include all referenced ValueSets, also from nested items.
@@ -92,15 +131,15 @@ class TestSDCPackageOperationCompliance:
         assert cs_urls.count(QLQ_C30_CS) == 1, f"CodeSystem count: {cs_urls}"
 
     async def test_missing_dependency_returns_operation_outcome_warning(self, api_client, clean_questionnaire):
-        """SDC: missing dependencies SHALL produce an OperationOutcome with severity=warning."""
+        """Missing dependencies are reported as warnings in the manifest's OperationOutcome."""
         q_id = await clean_questionnaire(QUESTIONNAIRE_WITH_MISSING_VALUESET)
 
         response = await api_client.get(f"/api/questionnaires/{q_id}/$package")
         assert response.status_code == 200
 
-        outcomes = _of_type(response.json(), "OperationOutcome")
-        assert len(outcomes) == 1
-        issue = outcomes[0]["issue"][0]
+        issues = _messages(response.json())
+        assert len(issues) == 1
+        issue = issues[0]
         assert issue["severity"] == "warning"
         assert issue["code"] == "not-found"
         assert "DOES_NOT_EXIST" in issue["diagnostics"]
@@ -113,9 +152,9 @@ class TestSDCPackageOperationCompliance:
             f"/api/questionnaires/{q_id}/$package", params={"include-dependencies": False}
         )).json()
 
-        assert len(with_deps["entry"]) > 1
-        assert len(without["entry"]) == 1
-        assert without["entry"][0]["resource"]["resourceType"] == "Questionnaire"
+        assert len(with_deps["entry"]) > 2
+        assert [e["resource"]["resourceType"] for e in without["entry"]] == ["Library", "Questionnaire"]
+        assert [r["type"] for r in _manifest(without)["relatedArtifact"]] == ["composed-of"]
 
     async def test_type_level_post_does_not_persist(self, api_client, fhir_server):
         """SDC: SHALL support type-level POST; the body Questionnaire is not stored."""
@@ -125,7 +164,7 @@ class TestSDCPackageOperationCompliance:
         assert response.status_code == 200
         bundle = response.json()
         assert bundle["type"] == "collection"
-        assert bundle["entry"][0]["resource"]["title"] == q["title"]
+        assert bundle["entry"][1]["resource"]["title"] == q["title"]
         stored = await fhir_server.get("/Questionnaire", params={"url": q["url"], "_summary": "count"})
         assert stored.json().get("total", 0) == 0
 
@@ -135,13 +174,13 @@ class TestSDCPackageOperationCompliance:
 
         unversioned = await api_client.get("/api/questionnaires/$package", params={"url": phq9["url"]})
         assert unversioned.status_code == 200
-        assert unversioned.json()["entry"][0]["resource"]["url"] == phq9["url"]
+        assert unversioned.json()["entry"][1]["resource"]["url"] == phq9["url"]
 
         versioned = await api_client.get(
             "/api/questionnaires/$package", params={"url": phq9["url"], "version": phq9["version"]}
         )
         assert versioned.status_code == 200
-        assert versioned.json()["entry"][0]["resource"]["version"] == phq9["version"]
+        assert versioned.json()["entry"][1]["resource"]["version"] == phq9["version"]
 
     async def test_unknown_version_returns_404(self, api_client, pro_questionnaires):
         response = await api_client.get(
@@ -154,7 +193,7 @@ class TestSDCPackageOperationCompliance:
         """PHQ-9 uses inline answerOption only — nothing to traverse."""
         bundle = (await api_client.get(f"/api/questionnaires/{pro_questionnaires['phq_9']['id']}/$package")).json()
         assert _of_type(bundle, "ValueSet") == []
-        assert _of_type(bundle, "OperationOutcome") == []
+        assert _messages(bundle) == []
 
     async def test_bundle_has_sdc_package_tag(self, api_client, pro_questionnaires):
         bundle = (await api_client.get(f"/api/questionnaires/{pro_questionnaires['phq_9']['id']}/$package")).json()
@@ -182,7 +221,7 @@ class TestDependencyResolution:
 
         libraries = _of_type(bundle, "Library")
         assert [lib["url"] for lib in libraries] == [SAMPLE_LIBRARY["url"]]
-        assert _of_type(bundle, "OperationOutcome") == []
+        assert _messages(bundle) == []
 
     async def test_contained_valueset_is_not_resolved_externally(self, api_client, clean_questionnaire):
         """A `#fragment` answerValueSet is a contained resource; the packager
@@ -202,8 +241,9 @@ class TestDependencyResolution:
 
         bundle = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
 
-        assert len(bundle["entry"]) == 1
-        assert bundle["entry"][0]["resource"]["contained"][0]["id"] == "yesno"
+        assert len(bundle["entry"]) == 2
+        assert bundle["entry"][1]["resource"]["contained"][0]["id"] == "yesno"
+        assert _messages(bundle) == []
 
     async def test_circular_valueset_includes_handled(self, api_client, clean_questionnaire, clean_valueset):
         """SDC: SHOULD handle circular references — each resource once, no hang."""
@@ -229,7 +269,7 @@ class TestDependencyResolution:
         assert urls == [vs1["url"]]
         # LOINC / SNOMED CodeSystems are external: absent and not warned about.
         assert _of_type(response.json(), "CodeSystem") == []
-        assert _of_type(response.json(), "OperationOutcome") == []
+        assert _messages(response.json()) == []
 
     async def test_deep_nested_dependencies(self, api_client, clean_questionnaire, clean_valueset, clean_codesystem):
         """Questionnaire → ValueSet → CodeSystem chain fully resolved."""
@@ -247,5 +287,5 @@ class TestDependencyResolution:
 
         bundle = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
 
-        assert [e["resource"]["resourceType"] for e in bundle["entry"]] == ["Questionnaire", "ValueSet", "CodeSystem"]
-        assert bundle["entry"][2]["resource"]["url"] == "http://example.org/CodeSystem/deep-nested"
+        assert [e["resource"]["resourceType"] for e in bundle["entry"]] == ["Library", "Questionnaire", "ValueSet", "CodeSystem"]
+        assert bundle["entry"][3]["resource"]["url"] == "http://example.org/CodeSystem/deep-nested"

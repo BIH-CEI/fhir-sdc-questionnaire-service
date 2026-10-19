@@ -69,7 +69,7 @@ Routes under `/api/questionnaires` (`api/app/routers/questionnaires.py`):
 | Route | Service | Notes |
 |-------|---------|-------|
 | `GET /`, `GET /{id}`, `POST /`, `PUT /{id}`, `DELETE /{id}`, `GET /search` | `fhir_client.py` | Proxy to HAPI |
-| `$package`: `GET /{id}/$package`, `GET /$package?url=`, `POST /$package` | `package_service.py` | Collection Bundle: Questionnaire, answerValueSets plus their CodeSystems, `cqf-library` Libraries (transitively), `targetStructureMap`s. Missing dependencies become OperationOutcome warnings. Limits: 100 entries, 20 MB. |
+| `$package`: `GET /{id}/$package`, `GET /$package?url=`, `POST /$package` | `package_service.py` | CRMI package (`crmi-package`; SDC defines no `$package`), collection Bundle: **outcome manifest first** (Library `asset-collection`, `crmi-manifestlibrary`: the Questionnaire as `composed-of`, every referenced dependency as `depends-on` with the exact packaged `url\|version`, messages as contained OperationOutcome via `cqf-messages`), then the Questionnaire, answerValueSets plus their CodeSystems, `cqf-library` Libraries (transitively), `targetStructureMap`s. Limits: 100 entries, 20 MB. |
 | `$localize`: `GET /{id}/$localize`, `GET /$localize`, `POST /$localize`, `GET /{id}/$languages` | `localization_service.py` | One-language rendering of a multilingual Questionnaire |
 | `POST /{id}/$compute-and-extract` | `scoring_extract_service.py` | See below |
 
