@@ -7,7 +7,7 @@ Four layers, one pytest tree under `api/tests/`. Markers are strict (`pytest.ini
 | **unit** | `tests/unit/` | nothing | Is the logic right? Pure functions: severity bands, translation extraction, dependency walking, version ordering, PRO-CTCAE parsing. Milliseconds. |
 | **integration** | `tests/integration/` | HAPI | Does the sidecar produce the right thing against real server behaviour? The FastAPI app runs **in-process** (httpx ASGI transport), so `--cov=app` measures real lines and error paths can be injected via `dependency_overrides`. |
 | **content** | `tests/content/` | HAPI | Does the image ship what the pins say? MII PRO current + retained versions, PRO Library manifest, PCOR-MII incl. the draft→active patch, a live `ValueSet/$expand`. Also the publish workflow's smoke test. |
-| **upstream** | `tests/upstream/` | HAPI | What does HAPI itself do? `$extract`/`$populate` ignore `calculatedExpression`, the CR ≥ 4.9 converter bug, the crashing native `$package`, the CapabilityStatement. Expected failures are **strict xfails**: when HAPI improves, the run goes red on purpose. |
+| **upstream** | `tests/upstream/` | HAPI | What does HAPI itself do? `$extract`/`$populate` ignore `calculatedExpression`, the (fixed) CR ≥ 4.9 converter bug as a regression test, the crashing native `$package`, the CapabilityStatement. Expected failures are **strict xfails**: when HAPI improves, the run goes red on purpose. |
 
 `sdc_compliance` is a cross-cutting marker for tests that map to an SDC Form Manager requirement. One file, `tests/integration/test_sidecar_container.py`, hits the containerized sidecar on port 8001 to prove the shipped image boots. The consumer stack (`make consumer-up`, LHC-Forms on 3004) is manual end-to-end only.
 
@@ -43,7 +43,6 @@ All are `strict=True`: an unexpected pass fails the run, which is the point.
 
 | Test | Why |
 |------|-----|
-| `upstream/test_evaluate_converter_regression::test_unfiltered_evaluate_upstream_tripwire` | CR ≥ 4.9 converter bug. Flips when HAPI ships a fix; then update [ARCHITECTURE.md](ARCHITECTURE.md#clinical-reasoning--49-parameters-converter). |
 | `upstream/test_hapi_native_package::test_hapi_native_package_is_crmi_conformant` | HAPI's own `$package` 500s on MII PRO (NPE at `PackageVisitor.java:276`: no CRMI outcome manifest for non-Library roots). Flips when it returns a CRMI package; then reconsider the sidecar layer. |
 | `integration/test_proctcae_scoring::test_score_returns_composite_grades` | No package ships `Library/PRO_CTCAE`; the endpoint cannot score. Ship the CQL or remove the router (bead). |
 | `integration/test_sidecar_errors::test_error_body_is_operation_outcome` | Sidecar errors are FastAPI `detail` objects, not OperationOutcome (bead). |

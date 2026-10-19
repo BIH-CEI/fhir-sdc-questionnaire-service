@@ -1,11 +1,11 @@
 ## syntax=docker/dockerfile:1.7
-# HAPI FHIR base image — pinned by digest for reproducibility.
-# Tag at time of pin: hapiproject/hapi:v8.12.0-1 (manifest-list digest, multi-arch).
-# Hinweis: clinical-reasoning >= 4.9 (ab HAPI 8.12) kann resource-wertige
-# CQL-Defines mit Backbone-Kindern nicht mehr in Parameters konvertieren —
-# der Sidecar fordert deshalb per expression= nur die Skalar-Defines an.
+# HAPI FHIR base image — tag for Renovate, digest (manifest list, multi-arch)
+# for reproducibility; the digest wins when both are given.
+# v8.12.0-2 bundles cqf-fhir-cr 4.13.0 (v8.12.0-1: 4.9.0). The Parameters
+# converter bug of CR 4.9 is fixed upstream in 4.12.0; the sidecar keeps
+# requesting only scalar defines via expression= anyway.
 # Details: ARCHITECTURE.md -> 'clinical-reasoning >= 4.9 Parameters-Converter'.
-ARG HAPI_BASE=hapiproject/hapi@sha256:d7f38d3676900b07e8a7d3500426eaf8d90ea9ced9a6726416f080f68e230fb0
+ARG HAPI_BASE=hapiproject/hapi:v8.12.0-2@sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e
 ARG MII_PRO_VERSION=2027.0.0-ballot.1
 ARG MII_PRO_SHA256=5085656d8ff49cf10a2e14f9f80c0b6f683c51a1dd190838761604df1e57f0db
 ARG SDC_VERSION=4.0.0
