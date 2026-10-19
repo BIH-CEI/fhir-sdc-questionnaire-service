@@ -16,6 +16,7 @@ Human docs: `README.md` (overview, versions, limitations), `ARCHITECTURE.md`, `T
 | `docker-compose.yml` / `.test.yml` / `.consumer-test.yml` | Dev stack (8095/8001) / test stack (8081/8001) / consumer overlay (8083, LHC-Forms 3004) |
 | `scripts/` | `refresh-pcor-mii.sh`, `sync-from-crmi.py`, `sync-from-ig.py`, `install-mii-pro.py`, backup/restore. The ISiK scripts, `install_mii_package.py` and `check-server-versions.*` are legacy. |
 | `local-packages/` | Vendored package tarballs |
+| `deploy/` | Deployment bundle (published images, mTLS proxy); `Dockerfile.loader`, `Dockerfile.proxy` build its extra images |
 | `docs/` | Strategy docs + `index.html`; the whole folder is published by `pages.yml` |
 | `.github/workflows/` | `test.yml`, `build-and-publish.yml`, `auto-pin-pro-sha.yml`, `auto-vendor-pcor-mii.yml`, `pages.yml` |
 

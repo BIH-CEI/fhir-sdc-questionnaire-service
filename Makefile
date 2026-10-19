@@ -21,7 +21,7 @@ MII_PRO_RETAINED_VERSIONS := $(shell sed -nE 's/^ARG MII_PRO_RETAINED_VERSIONS="
 RETAINED_PACKAGE_VERSIONS := $(foreach v,$(MII_PRO_RETAINED_VERSIONS),de.medizininformatikinitiative.kerndatensatz.pros@$(v))
 export RETAINED_PACKAGE_VERSIONS
 
-.PHONY: test-mtls up build down logs ps test test-unit test-stack consumer-up consumer-down consumer-logs consumer-resync refresh-pcor-mii bump-pcor-mii
+.PHONY: test-deploy test-mtls up build down logs ps test test-unit test-stack consumer-up consumer-down consumer-logs consumer-resync refresh-pcor-mii bump-pcor-mii
 
 up:
 	docker compose up -d
@@ -58,6 +58,12 @@ test-unit:
 
 # mTLS front door on top of the test stack (run test-stack first). Uses the
 # committed TEST-ONLY PKI; see deploy/mtls/.
+# Deployment bundle end to end (deploy/docker-compose.yml): builds all four
+# images locally, starts the bundle with the TEST-ONLY PKI, runs the mTLS
+# checks. KEEP=1 leaves it running (project fm-bundle-test, port 9443).
+test-deploy:
+	scripts/test-deploy-bundle.sh
+
 test-mtls:
 	docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml up -d --no-deps mtls-proxy
 	until curl -sk https://localhost:8443/ -o /dev/null; do sleep 2; done

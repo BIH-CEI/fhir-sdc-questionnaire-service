@@ -135,3 +135,22 @@ jobs:
       - name: Tear down test stack
         if: always()
         run: docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml down -v || true
+
+  # Deployment bundle end to end: builds the Form Manager, sidecar, loader and
+  # proxy images, starts deploy/docker-compose.yml with the TEST-ONLY PKI and
+  # runs the mTLS checks against it; also checks that the proxy image's default
+  # (MTLS_ENV=production) refuses the test PKI.
+  deploy-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bundle test (build images, start, mTLS checks)
+        env:
+          KEEP: "1"   # leave the stack up so the next step can dump its logs
+        run: scripts/test-deploy-bundle.sh
+
+      - name: Bundle logs on failure
+        if: failure()
+        run: docker compose -p fm-bundle-test -f deploy/docker-compose.yml logs --tail=200 || true

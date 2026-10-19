@@ -22,6 +22,9 @@ make build && make up
 | `test-stack` / `test` | Test stack (H2, HAPI 8081) and pytest. See [TESTING.md](TESTING.md). |
 | `consumer-up` / `consumer-down` / `consumer-logs` / `consumer-resync` | Consumer test network: a second HAPI pulls content from the producer |
 | `refresh-pcor-mii` / `bump-pcor-mii` | Re-vendor PCOR-MII at the pinned version, or follow upstream and bump `versions.env` |
+| `test-mtls` / `test-deploy` | mTLS checks on the test stack / the whole deployment bundle with the TEST-ONLY PKI |
+
+To run it on a server, use the **deployment bundle** in [`deploy/`](deploy/README.md): published images only, mTLS proxy in front.
 
 All targets load `versions.env`. A bare `docker run` of the image serves terminology and profiles only. Questionnaires and Libraries are added by the loader after boot (see [ARCHITECTURE.md](ARCHITECTURE.md)).
 
@@ -62,17 +65,14 @@ Image tags:
 
 ## Deployment readiness
 
-Fine for demos and internal staging. **Not production-ready:**
+The **deployment bundle** ([`deploy/`](deploy/README.md)) runs from published images: Form Manager, sidecar (`fhir-sdc-api`), loader (`fhir-sdc-loader`) and mTLS proxy (`fhir-sdc-proxy`), all with the same tags. It has healthchecks, restart policies, an internal backend network and client-certificate access with an allowlist. CI tests it end to end on every PR. Good for staging and pilot servers. Still missing for production:
 
-- No authentication. The sidecar calls HAPI unauthenticated (`api/app/services/fhir_client.py`, `authorization=None`) and exposes its own endpoints without auth.
-- CORS is `*` in the sidecar (`api/app/config.py`) and in HAPI's default `.env.example`.
-- `docker-compose.yml` is a dev setup:
-  - Postgres port 5433 is exposed and uses default credentials.
-  - uvicorn runs with `--reload` and a bind-mounted source tree.
-  - Startup ordering relies on sleeps.
-  - No restart policies, no TLS, no reverse proxy.
-- Request-time validation is off on purpose.
-- mTLS access is tested (`docker-compose.mtls.yml`: client certificates, allowlist, one FHIR base), but there is no production stack yet, and the per-site licence gate is not implemented.
+- **Per-site licence gate:** the proxy forwards the site identity, but the sidecar does not use it yet.
+- **Certificate revocation** (CRL/OCSP) is not configured.
+- **Backend trust:** HAPI and the sidecar have no authentication of their own; they rely on the internal network and the proxy.
+- **Request-time validation is off** on purpose.
+
+`docker-compose.yml` stays a development setup (exposed Postgres, `--reload` with bind-mounted source, open CORS).
 
 ## Known limitations
 

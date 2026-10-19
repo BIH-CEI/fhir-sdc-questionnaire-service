@@ -1,0 +1,26 @@
+# mTLS front door: nginx with the Form Manager routing (deploy/mtls/), the
+# production guard and the forbidden-test-CA reference baked in.
+#
+# The image carries NO certificates and NO allowlist. Mount them at runtime:
+#   /etc/nginx/mtls/ca.pem          trusted client CA bundle
+#   /etc/nginx/mtls/server.pem|.key server certificate
+#   /etc/nginx/mtls/allowlist.map   "<sha1-fingerprint> <site>;" per line
+#
+# Defaults to MTLS_ENV=production: the entrypoint hook 10-forbid-test-pki.sh
+# then refuses the committed TEST-ONLY PKI. Test stacks set MTLS_ENV=test.
+FROM nginx:1.27-alpine
+
+COPY deploy/mtls/nginx-mtls.conf /etc/nginx/templates/default.conf.template
+COPY deploy/mtls/10-forbid-test-pki.sh /docker-entrypoint.d/10-forbid-test-pki.sh
+COPY deploy/mtls/forbidden-test-ca.b64 /etc/nginx/forbidden-test-ca.b64
+RUN chmod 755 /docker-entrypoint.d/10-forbid-test-pki.sh
+
+ENV MTLS_ENV=production \
+    HAPI_UPSTREAM=hapi:8080 \
+    SIDECAR_UPSTREAM=sidecar:8000
+
+EXPOSE 8443
+
+LABEL org.opencontainers.image.title="FHIR SDC Form Manager - mTLS proxy" \
+      org.opencontainers.image.vendor="Berlin Institute of Health" \
+      org.opencontainers.image.licenses="Apache-2.0"

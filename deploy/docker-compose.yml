@@ -1,0 +1,110 @@
+# FHIR SDC Form Manager — deployment bundle.
+#
+# Published images only; no repo checkout, no build, no bind-mounted source.
+# Only the mTLS proxy is reachable from outside. See deploy/README.md.
+#
+#   cp .env.example .env    # set FM_TAG, POSTGRES_PASSWORD, PROXY_PORT
+#   # put ca.pem, server.pem, server.key, allowlist.map into ./pki/
+#   docker compose up -d
+#
+# All four images come from the same build: pin FM_TAG to one sha-<short> or
+# form-manager-<version> tag rather than `latest`.
+
+name: fhir-sdc-form-manager
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hapi}
+      POSTGRES_USER: ${POSTGRES_USER:-hapi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  hapi:
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-form-manager:${FM_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      spring.datasource.url: jdbc:postgresql://db:5432/${POSTGRES_DB:-hapi}
+      spring.datasource.username: ${POSTGRES_USER:-hapi}
+      spring.datasource.password: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+      hapi.fhir.enable_index_missing_fields: "true"
+      hapi.fhir.auto_create_placeholder_reference_targets: "true"
+      hapi.fhir.narrative_enabled: "true"
+      hapi.fhir.default_page_size: ${HAPI_DEFAULT_PAGE_SIZE:-20}
+      hapi.fhir.max_page_size: ${HAPI_MAX_PAGE_SIZE:-200}
+      # Clients reach HAPI only through the proxy (machine-to-machine mTLS);
+      # browsers are not expected, so no CORS origin is opened.
+      hapi.fhir.cors.allowed_origin: ${HAPI_CORS_ALLOWED_ORIGIN:-https://localhost}
+    volumes:
+      # Lucene index for ValueSet/$expand; must stay in step with postgres_data.
+      - hapi_lucene:/data/hapi/lucene
+    networks: [backend]
+    healthcheck:
+      # Ships with hapiproject/hapi >= v8.12.0-2 (distroless: no curl/wget).
+      test: ["CMD", "java", "-cp", "/app", "HealthCheck"]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 20
+
+  loader:
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-loader:${FM_TAG:-latest}
+    restart: "no"   # one-shot; re-run with: docker compose run --rm loader
+    depends_on:
+      hapi: { condition: service_healthy }
+    environment:
+      HAPI_URL: http://hapi:8080/fhir
+    networks: [backend]
+
+  sidecar:
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-api:${FM_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      hapi: { condition: service_healthy }
+    environment:
+      FHIR_BASE_URL: http://hapi:8080/fhir
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: '[]'
+    networks: [backend]
+    # healthcheck: from the image (GET /health)
+
+  proxy:
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-proxy:${FM_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      hapi: { condition: service_healthy }
+      sidecar: { condition: service_healthy }
+    environment:
+      MTLS_ENV: ${MTLS_ENV:-production}
+      HAPI_UPSTREAM: hapi:8080
+      SIDECAR_UPSTREAM: sidecar:8000
+    ports:
+      - "${PROXY_PORT:-443}:8443"
+    volumes:
+      - ${PKI_DIR:-./pki}/ca.pem:/etc/nginx/mtls/ca.pem:ro
+      - ${PKI_DIR:-./pki}/server.pem:/etc/nginx/mtls/server.pem:ro
+      - ${PKI_DIR:-./pki}/server.key:/etc/nginx/mtls/server.key:ro
+      - ${PKI_DIR:-./pki}/allowlist.map:/etc/nginx/mtls/allowlist.map:ro
+    networks: [backend, frontend]
+
+networks:
+  backend:
+    internal: true   # no route to the outside: db, hapi, loader, sidecar
+  frontend: {}
+
+volumes:
+  postgres_data:
+  hapi_lucene:

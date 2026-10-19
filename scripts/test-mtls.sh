@@ -6,12 +6,14 @@
 #   scripts/test-mtls.sh
 #
 # Env: MTLS_URL (default https://localhost:8443)
+#      MTLS_PROXY_CONTAINER (default mtls-proxy; for the access-log check)
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKI="$ROOT/deploy/mtls/test-pki"
 URL="${MTLS_URL:-https://localhost:8443}"
+PROXY_CONTAINER="${MTLS_PROXY_CONTAINER:-mtls-proxy}"
 PHQ9="https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/Questionnaire/mii-qst-pro-phq-9"
 fails=0
 
@@ -57,7 +59,7 @@ check "ValueSet/\$expand -> HAPI" 200 '.resourceType=="ValueSet"' site-a \
     "/fhir/ValueSet/\$expand?url=https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-4pt"
 
 echo "== spoofing"
-log_line=$(docker logs mtls-proxy 2>&1 | grep -c 'site="site-a"')
+log_line=$(docker logs "$PROXY_CONTAINER" 2>&1 | grep -c 'site="site-a"')
 check "a forged X-Client-Site header does not bypass the allowlist" 403 '' site-b /fhir/metadata -H "X-Client-Site: site-a"
 [ "$log_line" -gt 0 ] && echo "  ok    access log records the certificate's site" || { echo "  FAIL  no site in access log"; fails=$((fails + 1)); }
 
