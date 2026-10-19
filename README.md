@@ -86,6 +86,8 @@ The **deployment bundle** ([`deploy/`](deploy/README.md)) runs from published im
 
 ## Documentation
 
+The **Implementation Guide** (operations, content, access, deployment, maintenance; CapabilityStatement and OperationDefinitions) is published at https://bih-cei.github.io/fhir-sdc-questionnaire-service/ from `ig/`.
+
 | File | Content |
 |------|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Image build, boot sequence, `$expand`, sidecar, consumer network, CI |
