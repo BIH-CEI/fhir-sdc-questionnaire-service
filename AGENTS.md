@@ -36,7 +36,7 @@ make refresh-pcor-mii            # re-vendor PCOR-MII; make bump-pcor-mii to fol
 - **Retained MII PRO versions must be vendored.** `MII_PRO_RETAINED_VERSIONS` in `Dockerfile.form-manager` names versions whose tarball is in `local-packages/`; the build fails otherwise. ObservationDefinitions are never retained (no canonical in R4).
 - **Tests: the sidecar runs in-process.** `api_client` drives the FastAPI app via httpx's ASGI transport against the HAPI container; that is what makes coverage real. Expected failures are strict xfails that must flip when upstream changes, see `TESTING.md`.
 - **HAPI caches package bytes in the DB.** A package re-vendored under the same version does not take effect on an existing DB. Recreate it (`docker compose down -v`).
-- **`ValueSet/$expand` needs the Lucene index** (Hibernate Search, volume `hapi_lucene`). Packages ship no expansions. If DB and index diverge, run `$reindex`.
+- **`ValueSet/$expand` needs the Lucene index** (Hibernate Search, volume `hapi_lucene`). Packages ship no expansions. If DB and index diverge, run `$reindex`. Right after boot HAPI re-stores its TermValueSets and pre-expands them in the background; until then `$expand` answers 200 with an **empty** expansion. The content tests poll for up to 90 s instead of asserting once.
 - **Versions live only in `versions.env` and the Dockerfile ARGs.** Do not hard-code them in config, compose or tests.
 - **Unfiltered `Library/$evaluate` fails on CR >= 4.9.** Always pass `expression=`. See ARCHITECTURE.md "clinical-reasoning >= 4.9 Parameters-Converter".
 - **Validation is off by design.** Do not "fix" tests by turning it on.
