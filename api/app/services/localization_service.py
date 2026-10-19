@@ -70,12 +70,17 @@ class LocalizationService:
                     language
                 )
 
-            # Process answer options
+            # Process answer options — the translatable text sits on
+            # answerOption.valueCoding.display (translation extension on
+            # valueCoding._display), not on the option itself.
             if "answerOption" in processed_item:
-                processed_item["answerOption"] = [
-                    self._process_element(option, language)
-                    for option in processed_item["answerOption"]
-                ]
+                options = []
+                for option in processed_item["answerOption"]:
+                    option = self._process_element(option, language)
+                    if isinstance(option.get("valueCoding"), dict):
+                        option["valueCoding"] = self._process_element(option["valueCoding"], language)
+                    options.append(option)
+                processed_item["answerOption"] = options
 
             processed_items.append(processed_item)
 

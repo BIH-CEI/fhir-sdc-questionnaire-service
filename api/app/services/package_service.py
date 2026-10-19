@@ -12,6 +12,44 @@ MAX_BUNDLE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 MAX_BUNDLE_ENTRIES = 100
 
 
+def version_key(version: Optional[str]) -> tuple:
+    """Sortable key for FHIR business versions.
+
+    Numeric dotted parts compare numerically; a release ranks above its own
+    pre-release ("2027.0.0" > "2027.0.0-ballot.1"); a missing version ranks
+    lowest. Mirrors ver_key() in hapi-scripts/load-instance-resources.sh.
+    """
+    base, _, pre = (version or "").partition("-")
+    nums = []
+    for part in base.split("."):
+        try:
+            nums.append(int(part))
+        except ValueError:
+            nums.append(0)
+    while len(nums) < 3:
+        nums.append(0)
+    return (tuple(nums[:3]), 0 if pre else 1, pre)
+
+
+def pick_version(entries: List[dict], preferred_version: Optional[str] = None) -> Optional[dict]:
+    """Choose one resource from a searchset of the same canonical.
+
+    1. the exact `preferred_version` if present (an unversioned reference
+       inside a package resolves to that package version's own copy);
+    2. otherwise the highest version among status=active resources;
+    3. otherwise the highest version overall.
+    """
+    resources = [e["resource"] for e in entries if isinstance(e.get("resource"), dict)]
+    if not resources:
+        return None
+    if preferred_version:
+        for r in resources:
+            if r.get("version") == preferred_version:
+                return r
+    active = [r for r in resources if r.get("status") == "active"] or resources
+    return max(active, key=lambda r: version_key(r.get("version")))
+
+
 class DependencyResolver:
     """Resolves transitive dependencies for Questionnaire resources."""
 
@@ -89,7 +127,8 @@ class DependencyResolver:
     async def fetch_canonical(
         self,
         canonical_url: str,
-        resource_type: str
+        resource_type: str,
+        preferred_version: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Fetch resource by canonical URL with version support.
@@ -98,35 +137,21 @@ class DependencyResolver:
             canonical_url: URL like "http://example.org/ValueSet/abc" or
                           "http://example.org/ValueSet/abc|1.0.0"
             resource_type: FHIR resource type
+            preferred_version: for an unversioned canonical, prefer this
+                business version (the referencing Questionnaire's own), then
+                fall back to the highest active version. Several versions of
+                one package coexist on the server — see ARCHITECTURE.md
+                "Version retention".
 
         Returns:
             Resource dict or None if not found
         """
-        # Parse version from canonical URL
         if "|" in canonical_url:
             url, version = canonical_url.split("|", 1)
-            params = {"url": url, "version": version}
-        else:
-            url = canonical_url
-            params = {
-                "url": url,
-                "status": "active",
-                "_sort": "-_lastUpdated",
-                "_count": "1"
-            }
-
-        # Fetch from HAPI
-        result = await self.service.fetch_resource(f"/{resource_type}", params=params)
-
-        if not result or result.get("total", 0) == 0:
-            return None
-
-        # HAPI may return Bundle with total > 0 but no entry field
-        entries = result.get("entry", [])
-        if not entries:
-            return None
-
-        return entries[0]["resource"]
+            return await self.service.find_canonical(resource_type, url, version)
+        return await self.service.find_canonical(
+            resource_type, canonical_url, None, preferred_version=preferred_version
+        )
 
     async def resolve_all_dependencies(
         self,
@@ -138,6 +163,9 @@ class DependencyResolver:
         Returns list of dependency resources (ValueSets, CodeSystems, Libraries, etc.)
         """
         all_resources = []
+        # Unversioned references inside a package resolve to that package
+        # version's own copy of the target.
+        preferred = questionnaire.get("version")
 
         # Extract ValueSet references
         valueset_urls = self.extract_valueset_refs(questionnaire)
@@ -148,7 +176,7 @@ class DependencyResolver:
             if url.startswith("#") or url in self.processed_urls:
                 continue
 
-            valueset = await self.fetch_canonical(url, "ValueSet")
+            valueset = await self.fetch_canonical(url, "ValueSet", preferred)
 
             if not valueset:
                 self.warnings.append({
@@ -168,7 +196,7 @@ class DependencyResolver:
                 if cs_url in self.processed_urls:
                     continue
 
-                codesystem = await self.fetch_canonical(cs_url, "CodeSystem")
+                codesystem = await self.fetch_canonical(cs_url, "CodeSystem", preferred)
 
                 if codesystem:
                     self.processed_urls.add(cs_url)
@@ -190,7 +218,7 @@ class DependencyResolver:
             if url in self.processed_urls:
                 continue
 
-            library = await self.fetch_canonical(url, "Library")
+            library = await self.fetch_canonical(url, "Library", preferred)
 
             if library:
                 self.processed_urls.add(url)
@@ -200,7 +228,7 @@ class DependencyResolver:
                 nested_library_urls = self.extract_library_refs(library)
                 for nested_url in nested_library_urls:
                     if nested_url not in self.processed_urls:
-                        nested_library = await self.fetch_canonical(nested_url, "Library")
+                        nested_library = await self.fetch_canonical(nested_url, "Library", preferred)
                         if nested_library:
                             self.processed_urls.add(nested_url)
                             all_resources.append(nested_library)
@@ -219,7 +247,7 @@ class DependencyResolver:
             if url in self.processed_urls:
                 continue
 
-            structuremap = await self.fetch_canonical(url, "StructureMap")
+            structuremap = await self.fetch_canonical(url, "StructureMap", preferred)
 
             if structuremap:
                 self.processed_urls.add(url)
@@ -241,7 +269,10 @@ class PackageService:
     def __init__(self, hapi_base_url: str):
         """Initialize package service."""
         self.hapi_base = hapi_base_url
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        # HAPI reuses cached search results for 60 s by default; a canonical
+        # lookup right after a content publish would serve the stale list.
+        # Cache-Control: no-cache makes HAPI bypass its search cache.
+        self.http_client = httpx.AsyncClient(timeout=30.0, headers={"Cache-Control": "no-cache"})
 
     async def package_by_id(
         self,
@@ -286,31 +317,40 @@ class PackageService:
         Returns:
             FHIR Bundle with Questionnaire and dependencies
         """
-        # Search for Questionnaire
-        search_params = {"url": url}
-        if version:
-            search_params["version"] = version
-        else:
-            search_params["status"] = "active"
-            search_params["_sort"] = "-_lastUpdated"
-            search_params["_count"] = "1"
-
-        search_result = await self.fetch_resource(
-            "/Questionnaire",
-            params=search_params
-        )
-
-        if not search_result or search_result.get("total", 0) == 0:
-            raise ValueError(f"Questionnaire with url '{url}' not found")
-
-        # HAPI may return Bundle with total > 0 but no entry field
-        entries = search_result.get("entry", [])
-        if not entries:
-            raise ValueError(f"Questionnaire with url '{url}' not found")
-
-        questionnaire = entries[0]["resource"]
+        questionnaire = await self.find_canonical("Questionnaire", url, version)
+        if not questionnaire:
+            raise ValueError(
+                f"Questionnaire with url '{url}'"
+                + (f" version '{version}'" if version else "")
+                + " not found"
+            )
 
         return await self.build_bundle(questionnaire, include_dependencies)
+
+    async def find_canonical(
+        self,
+        resource_type: str,
+        url: str,
+        version: Optional[str] = None,
+        preferred_version: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Resolve a canonical URL on the server.
+
+        With `version`: exact match. Without: all versions are fetched and
+        `pick_version` chooses (preferred_version, else highest active
+        version). Returns the resource or None.
+        """
+        params = {"url": url}
+        if version:
+            params["version"] = version
+        else:
+            params["_count"] = "100"
+        result = await self.fetch_resource(f"/{resource_type}", params=params)
+        if not result:
+            return None
+        # HAPI may return Bundle with total > 0 but no entry field
+        return pick_version(result.get("entry", []), preferred_version)
 
     async def package_resource(
         self,

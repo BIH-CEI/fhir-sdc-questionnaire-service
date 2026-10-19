@@ -15,6 +15,8 @@ class FHIRClientService:
         self.client = AsyncFHIRClient(
             url=settings.fhir_base_url,
             authorization=None,  # No auth for now
+            # Bypass HAPI's 60 s search-result cache (fresh results after writes).
+            extra_headers={"Cache-Control": "no-cache"},
         )
         logger.info(f"FHIR client initialized with base URL: {settings.fhir_base_url}")
 

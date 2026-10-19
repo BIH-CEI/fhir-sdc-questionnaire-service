@@ -19,19 +19,20 @@ are the integration analogue of the CI smoke test in
 """
 import pytest
 from tests.conftest import (
+    MII_PRO_BASE,
     PRO_LIBRARY_CANONICALS,
     PRO_LIBRARY_NAMESPACE,
     PRO_LIBRARY_VERSION,
 )
 
+pytestmark = [pytest.mark.content, pytest.mark.asyncio]
 
-@pytest.mark.integration
-@pytest.mark.asyncio
+
 class TestPROLibraryLoaded:
-    """The container is supposed to load bih-cei.fhir.pro-library 0.1.0 at boot."""
+    """The container loads bih-cei.fhir.pro-library at PRO_LIBRARY_VERSION (versions.env)."""
 
     async def test_phq9_questionnaire_loaded(self, fhir_server):
-        """PRO Library PHQ-9 v0.1.0 is resolvable by canonical + version."""
+        """PRO Library PHQ-9 is resolvable by canonical + pinned version."""
         canonical = PRO_LIBRARY_CANONICALS["phq_9"]
         response = await fhir_server.get(
             "/Questionnaire",
@@ -45,9 +46,10 @@ class TestPROLibraryLoaded:
 
     async def test_phq9_derivedFrom_preserved(self, fhir_server):
         """
-        derivedFrom on the PRO Library PHQ-9 still points to MII PRO
-        2026.3.0 — the derivation chain is not silently dropped during
-        package installation.
+        derivedFrom on the PRO Library PHQ-9 points to the MII PRO PHQ-9 (a
+        versioned canonical) — the derivation chain is not silently dropped
+        during package installation. Which MII PRO version it names is the
+        PRO Library's business, not pinned here.
         """
         canonical = PRO_LIBRARY_CANONICALS["phq_9"]
         response = await fhir_server.get(
@@ -57,12 +59,9 @@ class TestPROLibraryLoaded:
         q = response.json()["entry"][0]["resource"]
 
         derived_from = q.get("derivedFrom", [])
-        assert any(
-            "mii-qst-pro-phq-9" in df and "2026.3.0" in df
-            for df in derived_from
-        ), (
-            f"derivedFrom does not preserve MII PRO 2026.3.0 upstream attribution: "
-            f"{derived_from}"
+        upstream = f"{MII_PRO_BASE}/Questionnaire/mii-qst-pro-phq-9"
+        assert any(df.startswith(upstream + "|") for df in derived_from), (
+            f"derivedFrom does not carry a versioned MII PRO PHQ-9 canonical: {derived_from}"
         )
 
     async def test_phq9_capability_extensions(self, fhir_server):
@@ -82,8 +81,6 @@ class TestPROLibraryLoaded:
         assert "computable" in capabilities, f"Missing 'computable' tag — have {capabilities}"
 
 
-@pytest.mark.integration
-@pytest.mark.asyncio
 class TestReleaseManifestIntegrity:
     """
     The release manifest (Library type=asset-collection) is the CRMI release

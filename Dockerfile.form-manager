@@ -10,6 +10,13 @@ ARG MII_PRO_VERSION=2027.0.0-ballot.1
 ARG MII_PRO_SHA256=5085656d8ff49cf10a2e14f9f80c0b6f683c51a1dd190838761604df1e57f0db
 ARG SDC_VERSION=4.0.0
 ARG SDC_SHA256=d785be8474c7ec7988e32e326430d9ca4aeb2cac4a1f195022e4d6f7dc5c5291
+# Older MII PRO versions kept as first-class content (profiles + terminology
+# installed per version, Questionnaires/Libraries loaded by the post-boot
+# loader via canonical|version). Space-separated; each must be vendored as
+# local-packages/de.medizininformatikinitiative.kerndatensatz.pros-<v>.tgz.
+# Needed so QuestionnaireResponses pinned to an earlier version keep resolving
+# (see ARCHITECTURE.md "Version retention"). Empty string = latest only.
+ARG MII_PRO_RETAINED_VERSIONS="2026.7.0"
 # "Our" versions — single source of truth lives in versions.env at repo root.
 # CI sources versions.env and passes --build-arg; docker-compose reads it via
 # `env_file:`. NO defaults here on purpose: builds must be explicit about the
@@ -24,6 +31,7 @@ ARG PRO_LIBRARY_VERSION
 FROM debian:bookworm-slim AS fetch
 ARG MII_PRO_VERSION
 ARG MII_PRO_SHA256
+ARG MII_PRO_RETAINED_VERSIONS
 ARG SDC_VERSION
 ARG SDC_SHA256
 ARG PCOR_MII_VERSION
@@ -38,6 +46,18 @@ RUN curl -sfL --retry 5 --retry-all-errors --retry-delay 5 "https://packages.sim
         -o "/pkgs/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz" \
  && echo "${MII_PRO_SHA256}  /pkgs/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz" \
         | sha256sum -c -
+
+# Retained MII PRO versions — vendored tarballs (bytes pinned by git), copied
+# next to the current one. application.yaml gets one installer entry each.
+COPY local-packages/de.medizininformatikinitiative.kerndatensatz.pros-*.tgz /tmp/retained/
+COPY hapi-config/application.yaml hapi-scripts/render-application-yaml.py /tmp/cfg/
+RUN set -e; for v in ${MII_PRO_RETAINED_VERSIONS}; do \
+      f="/tmp/retained/de.medizininformatikinitiative.kerndatensatz.pros-${v}.tgz"; \
+      [ -f "$f" ] || { echo "retained MII PRO ${v}: tarball not vendored in local-packages/" >&2; exit 1; }; \
+      [ "$v" != "${MII_PRO_VERSION}" ] || { echo "retained MII PRO ${v} equals MII_PRO_VERSION" >&2; exit 1; }; \
+      cp "$f" /pkgs/; echo "retained MII PRO ${v}: vendored tarball bundled"; \
+    done; \
+    python3 /tmp/cfg/render-application-yaml.py /tmp/cfg/application.yaml /tmp/cfg/application.rendered.yaml "${MII_PRO_RETAINED_VERSIONS}"
 
 # SDC — fetch upstream, verify, then patch resource-level status: "draft" → "active"
 # so HAPI's PackageInstallerSvc accepts SD/CS/VS during STORE_AND_INSTALL.
@@ -84,6 +104,7 @@ RUN cd /tmp/sdc && tar czf "/pkgs/hl7.fhir.uv.sdc-${SDC_VERSION}.tgz" package/ \
 
 FROM ${HAPI_BASE}
 ARG MII_PRO_VERSION
+ARG MII_PRO_RETAINED_VERSIONS
 ARG SDC_VERSION
 ARG PRO_LIBRARY_VERSION
 ARG FORM_MANAGER_VERSION
@@ -97,7 +118,8 @@ COPY --from=fetch --chown=65532:65532 /lucene /data/hapi/lucene
 COPY local-packages/bih-cei.fhir.pro-library-${PRO_LIBRARY_VERSION}.tgz /data/hapi/local-packages/
 # PCOR-MII project IG — comes in via /pkgs from the fetch stage (draft→active
 # patched there, see above).
-COPY hapi-config/application.yaml /data/hapi/application.yaml
+# application.yaml rendered in the fetch stage (retained MII PRO entries).
+COPY --from=fetch /tmp/cfg/application.rendered.yaml /data/hapi/application.yaml
 
 # NOTE: HAPI's PackageInstallerSvc only installs NamingSystem / CodeSystem /
 # ValueSet / StructureDefinition / ConceptMap / SearchParameter / Subscription.
@@ -115,6 +137,7 @@ ENV SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/hapi/ \
     PRO_LIBRARY_VERSION=${PRO_LIBRARY_VERSION} \
     PCOR_MII_VERSION=${PCOR_MII_VERSION} \
     MII_PRO_VERSION=${MII_PRO_VERSION} \
+    MII_PRO_RETAINED_VERSIONS="${MII_PRO_RETAINED_VERSIONS}" \
     SDC_VERSION=${SDC_VERSION} \
     FORM_MANAGER_VERSION=${FORM_MANAGER_VERSION}
 
@@ -122,6 +145,7 @@ LABEL org.opencontainers.image.title="FHIR SDC Form Manager (HAPI + SDC + MII PR
       org.opencontainers.image.vendor="Berlin Institute of Health" \
       org.opencontainers.image.licenses="Apache-2.0" \
       de.mii.kerndatensatz-pro.version="${MII_PRO_VERSION}" \
+      de.mii.kerndatensatz-pro.retained-versions="${MII_PRO_RETAINED_VERSIONS}" \
       de.mii.kerndatensatz-pro.source="https://packages.simplifier.net/de.medizininformatikinitiative.kerndatensatz.pros/${MII_PRO_VERSION}" \
       org.hl7.fhir.uv.sdc.version="${SDC_VERSION}" \
       org.hl7.fhir.uv.sdc.source="https://packages.simplifier.net/hl7.fhir.uv.sdc/${SDC_VERSION}" \

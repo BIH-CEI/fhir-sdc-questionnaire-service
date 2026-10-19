@@ -59,6 +59,13 @@ hapi:
         packageUrl: file:///data/hapi/local-packages/de.medizininformatikinitiative.kerndatensatz.pros-${MII_PRO_VERSION}.tgz
         reloadExisting: false
         fetchDependencies: false
+      # Older MII PRO versions are kept as first-class content (profiles +
+      # terminology per version, keyed by canonical|version) so that
+      # QuestionnaireResponses pinned to an earlier version keep resolving.
+      # The marker below is replaced at image build time — see
+      # Dockerfile.form-manager (MII_PRO_RETAINED_VERSIONS) and
+      # hapi-scripts/render-application-yaml.py. Keep it on its own line.
+      # @@MII_PRO_RETAINED@@
 
       # PRO Library (BIH-CEI) — companion content package, loaded in parallel to MII PRO.
       # 0.x line is provisional under BIH-CEI stewardship (see docs/VISION.md §1a on the

@@ -66,6 +66,8 @@ services:
     environment:
       FHIR_BASE_URL: http://hapi-fhir-test:8080/fhir
       API_BASE_URL: http://localhost:8000
+      # Reported by /health; sourced from versions.env (Makefile / CI export it).
+      FORM_MANAGER_VERSION: ${FORM_MANAGER_VERSION}
       LOG_LEVEL: DEBUG
       API_HOST: 0.0.0.0
       API_PORT: 8000

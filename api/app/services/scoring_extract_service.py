@@ -63,7 +63,11 @@ EXT_Q_UNIT = "http://hl7.org/fhir/StructureDefinition/questionnaire-unit"
 class ScoringExtractService:
     def __init__(self, fhir_base_url: str):
         self.fhir_base_url = fhir_base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self.fhir_base_url, timeout=60.0)
+        # Cache-Control: no-cache — bypass HAPI's 60 s search-result cache so a
+        # QuestionnaireResponse posted a moment ago is found (see package_service).
+        self._client = httpx.AsyncClient(
+            base_url=self.fhir_base_url, timeout=60.0, headers={"Cache-Control": "no-cache"}
+        )
 
     async def aclose(self):
         await self._client.aclose()

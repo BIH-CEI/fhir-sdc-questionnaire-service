@@ -1,65 +1,57 @@
 # Testing
 
-The pytest suite in `api/tests/` runs against a live stack: the Form Manager image plus the FastAPI sidecar. There are no mocked unit tests. Current CI result: **92 passed, 1 skipped, 2 xfailed**.
+Four layers, one pytest tree under `api/tests/`. Markers are strict (`pytest.ini`).
+
+| Layer | Path | Needs | Answers |
+|-------|------|-------|---------|
+| **unit** | `tests/unit/` | nothing | Is the logic right? Pure functions: severity bands, translation extraction, dependency walking, version ordering, PRO-CTCAE parsing. Milliseconds. |
+| **integration** | `tests/integration/` | HAPI | Does the sidecar produce the right thing against real server behaviour? The FastAPI app runs **in-process** (httpx ASGI transport), so `--cov=app` measures real lines and error paths can be injected via `dependency_overrides`. |
+| **content** | `tests/content/` | HAPI | Does the image ship what the pins say? MII PRO current + retained versions, PRO Library manifest, PCOR-MII incl. the draft→active patch, a live `ValueSet/$expand`. Also the publish workflow's smoke test. |
+| **upstream** | `tests/upstream/` | HAPI | What does HAPI itself do? `$extract`/`$populate` ignore `calculatedExpression`, the CR ≥ 4.9 converter bug, the partial native `$package`, the CapabilityStatement. Expected failures are **strict xfails**: when HAPI improves, the run goes red on purpose. |
+
+`sdc_compliance` is a cross-cutting marker for tests that map to an SDC Form Manager requirement. One file, `tests/integration/test_sidecar_container.py`, hits the containerized sidecar on port 8001 to prove the shipped image boots. The consumer stack (`make consumer-up`, LHC-Forms on 3004) is manual end-to-end only.
 
 ## Run locally (same steps as `.github/workflows/test.yml`)
 
 ```bash
 pip install -r api/requirements.txt -r api/requirements-test.txt
-make test-stack                      # HAPI :8081 (H2 in-memory) + FastAPI :8001, then runs the
-                                     # instance loader over all packages (incl. those inside the image)
-make test                            # pytest tests/sdc_compliance/ tests/integration/ -v --tb=short
+make test-unit                       # unit layer + loader version-ordering check, no Docker
+make test-stack                      # HAPI :8081 (H2 in-memory) + sidecar :8001, then the loader
+                                     # over the image's own package set (current + retained MII PRO)
+make test                            # pytest tests/integration tests/content tests/upstream
 docker compose -f docker-compose.test.yml down -v
 ```
 
-- Endpoints come from `FHIR_BASE_URL` (default `http://localhost:8081/fhir`) and `API_BASE_URL` (default `http://localhost:8001`).
+- HAPI: `FHIR_BASE_URL` (default `http://localhost:8081/fhir`) or `--fhir-url`.
+- Sidecar: in-process by default. Set `API_BASE_URL` to test a running sidecar black-box instead (no coverage, no dependency overrides).
+- Coverage: `cd api && pytest tests/integration tests/content tests/upstream --cov=app --cov-report=html`. CI fails below 75 %. Report in `api/htmlcov/`.
 - The main stack also uses host port 8001, so do not run both at the same time.
-- Coverage: add `--cov=app --cov-report=html`. The report lands in `api/htmlcov/`.
-- Markers (`pytest.ini`, strict): `sdc_compliance`, `integration`, `failure_scenarios`, `slow`, `unit`.
 
-## Layout
+## Fixtures (`conftest.py`)
 
-| Path | Covers |
-|------|--------|
-| `sdc_compliance/test_metadata.py` | CapabilityStatement presence, FHIR version, content |
-| `sdc_compliance/test_operation_outcome.py` | OperationOutcome structure on errors |
-| `sdc_compliance/test_package_operation.py` | Sidecar `$package`. See below. |
-| `integration/test_questionnaire_crud.py` | CRUD and search through the sidecar, HAPI failure scenarios |
-| `integration/test_pro_library_manifest.py` | PRO Library loaded at the pinned version; every CRMI manifest `relatedArtifact` resolves |
-| `integration/test_calculated_expression_extract.py` | Locks in that HAPI CR's `$extract` / `$populate` do not evaluate `calculatedExpression` |
-| `integration/test_compute_and_extract.py` | Sidecar `$compute-and-extract` end to end |
-| `integration/test_evaluate_converter_regression.py` | CR >= 4.9 converter regression, plus the upstream tripwire |
-| `integration/test_proctcae_scoring.py` | `/api/pro-ctcae/score` |
-| `fixtures/sample_resources.py` | Synthetic resources for cases the shipped content does not cover |
-
-`test_package_operation.py` tests:
-
-- Bundle shape
-- the Q→VS→CS chain on real MII PRO content
-- Library inclusion
-- missing, circular and deep dependencies
-- a HAPI-native sentinel
-
-Fixtures (`conftest.py`):
-
-- Most tests address content shipped in the image by canonical URL (`pro_questionnaires`).
-- Synthetic resources go through `clean_questionnaire` / `clean_valueset` / `clean_codesystem`, which delete them on teardown.
-- The PRO Library version comes from `PRO_LIBRARY_VERSION` or `versions.env`; never hard-code it.
-- `--fhir-server` / `--fhir-url` switch the target server. Only HAPI with the bundled content is maintained.
+- `fhir_server`: httpx client against HAPI. `api_client`: the sidecar (in-process or HTTP).
+- `pro_questionnaires` (session): ids of MII PRO content by canonical, fails loudly if the image is missing it.
+- `clean_questionnaire` / `clean_valueset` / `clean_codesystem` / `clean_library`: create synthetic resources, delete on teardown.
+- `test_subject`: a throwaway Patient; its QuestionnaireResponses and Observations are deleted on teardown, so repeated runs do not accumulate data.
+- Versions come from `versions.env` (`PRO_LIBRARY_VERSION`, `PCOR_MII_VERSION`) and the Dockerfile ARGs (`MII_PRO_VERSION`, `MII_PRO_RETAINED_VERSIONS`). Never hard-code them.
+- `tests/support/pro_library.py`: PHQ-9 / SF-4a QuestionnaireResponse builders shared by integration and upstream tests.
 
 ## Expected non-passes
 
-| Test | Kind | Meaning |
-|------|------|---------|
-| `test_unfiltered_evaluate_upstream_tripwire` | strict xfail | Flips once HAPI ships CR >= 4.12. Then update [ARCHITECTURE.md](ARCHITECTURE.md#clinical-reasoning--49-parameters-converter). |
-| `test_hapi_native_package_is_partial` | xfail | HAPI's own `$package` still 500s on MII PRO PHQ-9 |
-| `test_create_questionnaire_missing_required_field` | skip | Request-time validation is off |
+All are `strict=True`: an unexpected pass fails the run, which is the point.
+
+| Test | Why |
+|------|-----|
+| `upstream/test_evaluate_converter_regression::test_unfiltered_evaluate_upstream_tripwire` | CR ≥ 4.9 converter bug. Flips when HAPI ships a fix; then update [ARCHITECTURE.md](ARCHITECTURE.md#clinical-reasoning--49-parameters-converter). |
+| `upstream/test_hapi_native_package::test_hapi_native_package_is_sdc_conformant` | HAPI's own `$package` 500s on MII PRO. Flips when it returns an SDC collection Bundle; then reconsider the sidecar layer. |
+| `integration/test_proctcae_scoring::test_score_returns_composite_grades` | No package ships `Library/PRO_CTCAE`; the endpoint cannot score. Ship the CQL or remove the router (bead). |
+| `integration/test_sidecar_errors::test_error_body_is_operation_outcome` | Sidecar errors are FastAPI `detail` objects, not OperationOutcome (bead). |
+| `integration/test_questionnaire_crud::test_create_missing_required_field_is_rejected` | No request-time validation by design; no sidecar schema check yet. |
+| `integration/test_questionnaire_crud::test_update_removes_omitted_fields` | PUT sets attributes one by one; omitted fields survive (bead). |
+| `integration/test_questionnaire_crud::test_search_total_is_server_total_not_page_length` | `Bundle.total` is the page length (bead). |
+| `integration/test_questionnaire_crud::test_search_free_text` | `q` maps to `_content`, which needs HAPI full-text indexing (off) → 500 (bead). |
 
 ## What CI checks
 
-- **`test.yml`** (push/PR to master, main, develop): image build, test stack, loader, the full pytest suite with coverage. The Codecov upload is non-blocking.
-- **`build-and-publish.yml`**: boots the freshly built image on its own before pushing to GHCR. It asserts:
-  - ≥ 20 MII PRO StructureDefinitions at the pinned version
-  - PRO Library PHQ-9 and release manifest
-  - PCOR-MII `UKHDEDP` Questionnaire and `pcor-item-dictionary` CodeSystem
-  - a working `ValueSet/$expand`
+- **`test.yml`** (push/PR to master, main, develop): unit layer first (no Docker), then image build, test stack, loader over the image's package set, and `pytest tests/integration tests/content tests/upstream` with a 75 % coverage gate. The HTML report is an artifact.
+- **`build-and-publish.yml`**: boots the freshly built image on its own, runs the loader and `pytest tests/content` against it before pushing to GHCR. Same tests as above, so PRs and the publish gate cannot drift apart.

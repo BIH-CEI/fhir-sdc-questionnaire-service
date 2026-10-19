@@ -257,7 +257,7 @@ curl http://localhost:8080/fhir/metadata</code></pre>
             <p>Living in <code>api/tests/</code> and <code>.github/workflows/build-and-publish.yml</code>:</p>
             <ul>
                 <li><strong>CI smoke test</strong> — every PR boots the freshly built image, hits <code>/fhir/metadata</code>, and asserts that MII PRO, the PRO Library (PHQ-9 + release manifest) and PCOR-MII (Questionnaires + terminology) are loaded and that <code>ValueSet/$expand</code> returns codes. If any of that fails, the build fails.</li>
-                <li><strong>SDC compliance tests</strong> (<code>api/tests/sdc_compliance/</code>) — assertions against the SDC Form Manager CapabilityStatement: metadata, OperationOutcome shapes, <code>$package</code>.</li>
+                <li><strong>Test layers</strong> (<code>api/tests/</code>) — <code>unit/</code> (pure functions), <code>integration/</code> (sidecar in-process against HAPI, incl. the SDC <code>$package</code> requirements), <code>content/</code> (image ships the pinned MII PRO current + retained versions, PRO Library, PCOR-MII), <code>upstream/</code> (HAPI behaviour pinned with strict xfails).</li>
                 <li><strong>Integration tests</strong> (<code>api/tests/integration/</code>) — Questionnaire CRUD, calculated-expression <code>$extract</code>, PRO-CTCAE scoring round-trip.</li>
                 <li><strong>Consumer test network</strong> — a second HAPI pulls the content from this image (CRMI release manifest, PCOR-MII IG) and serves it to an LHC-Forms renderer. See <a href="https://github.com/BIH-CEI/fhir-sdc-questionnaire-service/blob/master/TESTING.md">TESTING.md</a>.</li>
             </ul>

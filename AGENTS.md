@@ -12,7 +12,7 @@ Human docs: `README.md` (overview, versions, limitations), `ARCHITECTURE.md`, `T
 | `hapi-config/application.yaml` | Package install list, CR on, Lucene, validation off |
 | `hapi-scripts/load-instance-resources.sh` | Post-boot loader for Questionnaire/Library/… |
 | `api/app/` | FastAPI sidecar: `routers/questionnaires.py`, `services/{package,localization,scoring_extract}_service.py` |
-| `api/tests/` | pytest: `sdc_compliance/`, `integration/`, `fixtures/`, `conftest.py` |
+| `api/tests/` | pytest layers `unit/`, `integration/` (sidecar in-process), `content/`, `upstream/` (HAPI behaviour, strict xfails); `support/`, `fixtures/`, `conftest.py`. See `TESTING.md`. |
 | `docker-compose.yml` / `.test.yml` / `.consumer-test.yml` | Dev stack (8095/8001) / test stack (8081/8001) / consumer overlay (8083, LHC-Forms 3004) |
 | `scripts/` | `refresh-pcor-mii.sh`, `sync-from-crmi.py`, `sync-from-ig.py`, `install-mii-pro.py`, backup/restore. The ISiK scripts, `install_mii_package.py` and `check-server-versions.*` are legacy. |
 | `local-packages/` | Vendored package tarballs |
@@ -23,7 +23,8 @@ Human docs: `README.md` (overview, versions, limitations), `ARCHITECTURE.md`, `T
 
 ```bash
 make build && make up            # dev stack (needs .env from .env.example)
-make test-stack && make test     # test stack (loader included), then pytest
+make test-unit                   # pure-function tests + loader version-ordering check, no Docker
+make test-stack && make test     # test stack (loader included), then integration/content/upstream
 make consumer-up                 # consumer HAPI + CRMI/IG sync + LHC-Forms
 make refresh-pcor-mii            # re-vendor PCOR-MII; make bump-pcor-mii to follow upstream
 ```
@@ -31,7 +32,9 @@ make refresh-pcor-mii            # re-vendor PCOR-MII; make bump-pcor-mii to fol
 ## Gotchas
 
 - **HAPI's installer skips `status: draft` resources.** SDC and PCOR-MII are patched draft→active in `Dockerfile.form-manager`. A new package with draft content needs the same patch.
-- **HAPI's installer skips Questionnaire, Library, Provenance, ImplementationGuide, ObservationDefinition and TestScript.** `load-instance-resources.sh` PUTs them after boot. A stack without the loader has no Questionnaires. Only the newest package version keeps its ids (`RETAIN_PRIOR_VERSIONS=1` for older ones).
+- **HAPI's installer skips Questionnaire, Library, Provenance, ImplementationGuide, ObservationDefinition and TestScript.** `load-instance-resources.sh` PUTs them after boot. A stack without the loader has no Questionnaires. Only the newest package version keeps its ids; older versions are loaded only when declared in `RETAINED_PACKAGE_VERSIONS` (derived from the `MII_PRO_RETAINED_VERSIONS` Dockerfile ARG, which also installs their terminology). Run the loader over the image's package dir, not over `local-packages/`.
+- **Retained MII PRO versions must be vendored.** `MII_PRO_RETAINED_VERSIONS` in `Dockerfile.form-manager` names versions whose tarball is in `local-packages/`; the build fails otherwise. ObservationDefinitions are never retained (no canonical in R4).
+- **Tests: the sidecar runs in-process.** `api_client` drives the FastAPI app via httpx's ASGI transport against the HAPI container; that is what makes coverage real. Expected failures are strict xfails that must flip when upstream changes, see `TESTING.md`.
 - **HAPI caches package bytes in the DB.** A package re-vendored under the same version does not take effect on an existing DB. Recreate it (`docker compose down -v`).
 - **`ValueSet/$expand` needs the Lucene index** (Hibernate Search, volume `hapi_lucene`). Packages ship no expansions. If DB and index diverge, run `$reindex`.
 - **Versions live only in `versions.env` and the Dockerfile ARGs.** Do not hard-code them in config, compose or tests.

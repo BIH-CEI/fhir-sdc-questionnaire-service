@@ -57,3 +57,9 @@ wheels/
 yarn-debug.log*
 yarn-error.log*
 local-packages-merged/
+local-packages-image/
+
+# pytest coverage output
+api/.coverage
+api/htmlcov/
+api/coverage.xml
