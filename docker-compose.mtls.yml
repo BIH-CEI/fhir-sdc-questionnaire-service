@@ -1,0 +1,33 @@
+# mTLS front door on top of the test stack (CI and local):
+#
+#   docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml up -d
+#   scripts/test-mtls.sh
+#
+# Uses the committed TEST-ONLY PKI in deploy/mtls/test-pki/ with its
+# hard-coded allowlist. A production stack mounts its own ca.pem, server
+# cert and allowlist and sets MTLS_ENV=production; the entrypoint hook
+# 10-forbid-test-pki.sh then refuses the test PKI.
+
+services:
+  mtls-proxy:
+    image: nginx:1.27-alpine
+    container_name: mtls-proxy
+    depends_on:
+      - hapi-fhir-test
+      - fastapi-test
+    ports:
+      - "8443:8443"
+    environment:
+      MTLS_ENV: ${MTLS_ENV:-test}
+      HAPI_UPSTREAM: hapi-fhir-test:8080
+      SIDECAR_UPSTREAM: fastapi-test:8000
+    volumes:
+      # nginx renders templates/*.template into conf.d with envsubst, but only
+      # for variables set in the environment (nginx's own $vars stay intact).
+      - ./deploy/mtls/nginx-mtls.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/mtls/10-forbid-test-pki.sh:/docker-entrypoint.d/10-forbid-test-pki.sh:ro
+      - ./deploy/mtls/forbidden-test-ca.b64:/etc/nginx/forbidden-test-ca.b64:ro
+      - ./deploy/mtls/test-pki/ca.pem:/etc/nginx/mtls/ca.pem:ro
+      - ./deploy/mtls/test-pki/server.pem:/etc/nginx/mtls/server.pem:ro
+      - ./deploy/mtls/test-pki/server.key:/etc/nginx/mtls/server.key:ro
+      - ./deploy/mtls/test-pki/allowlist.map:/etc/nginx/mtls/allowlist.map:ro

@@ -31,6 +31,7 @@ make refresh-pcor-mii            # re-vendor PCOR-MII; make bump-pcor-mii to fol
 
 ## Gotchas
 
+- **`deploy/mtls/test-pki/` holds committed TEST-ONLY keys** (un-ignored in `.gitignore`). Never put real keys there or use them outside the test stack; nginx refuses them when `MTLS_ENV=production`.
 - **HAPI's installer skips `status: draft` resources.** SDC and PCOR-MII are patched draft→active in `Dockerfile.form-manager`. A new package with draft content needs the same patch.
 - **HAPI's installer skips Questionnaire, Library, Provenance, ImplementationGuide, ObservationDefinition and TestScript.** `load-instance-resources.sh` PUTs them after boot. A stack without the loader has no Questionnaires. Only the newest package version keeps its ids; older versions are loaded only when declared in `RETAINED_PACKAGE_VERSIONS` (derived from the `MII_PRO_RETAINED_VERSIONS` Dockerfile ARG, which also installs their terminology). Run the loader over the image's package dir, not over `local-packages/`.
 - **Retained MII PRO versions must be vendored.** `MII_PRO_RETAINED_VERSIONS` in `Dockerfile.form-manager` names versions whose tarball is in `local-packages/`; the build fails otherwise. ObservationDefinitions are never retained (no canonical in R4).

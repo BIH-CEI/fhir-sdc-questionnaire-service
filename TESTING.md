@@ -55,4 +55,5 @@ All are `strict=True`: an unexpected pass fails the run, which is the point.
 ## What CI checks
 
 - **`test.yml`** (push/PR to master, main, develop): unit layer first (no Docker), then image build, test stack, loader over the image's package set, and `pytest tests/integration tests/content tests/upstream` with a 75 % coverage gate. The HTML report is an artifact.
+- **mTLS front door** (step in `test.yml`, locally `make test-mtls` after `make test-stack`): `scripts/test-mtls.sh` checks no/foreign/unlisted/allowed certificates (401/401/403/200), the FHIR routing to sidecar vs. HAPI, and that the production guard refuses the test PKI but accepts a stand-in production PKI.
 - **`build-and-publish.yml`**: boots the freshly built image on its own, runs the loader and `pytest tests/content` against it before pushing to GHCR. Same tests as above, so PRs and the publish gate cannot drift apart.
