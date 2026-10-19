@@ -6,9 +6,13 @@ by a stub service so the de-duplication / warning logic can be pinned.
 import pytest
 
 from app.services.package_service import (
+    CQF_MESSAGES,
+    CRMI_MANIFEST_PROFILE,
     MAX_BUNDLE_ENTRIES,
     DependencyResolver,
     PackageService,
+    build_outcome_manifest,
+    canonical_of,
 )
 
 pytestmark = pytest.mark.unit
@@ -153,3 +157,69 @@ def test_create_bundle_shape():
     assert bundle["type"] == "collection"
     assert bundle["meta"]["tag"][0]["code"] == "questionnaire-package"
     assert bundle["timestamp"].endswith("Z")
+
+
+# --- CRMI outcome manifest (crmi-package: first resource of every package) ---
+
+Q = {"resourceType": "Questionnaire", "id": "q1", "url": "http://x/Questionnaire/q1",
+     "version": "2.0", "title": "Q One"}
+
+
+def test_manifest_is_a_crmi_asset_collection_without_content():
+    m = build_outcome_manifest(Q, [], [])
+    assert m["resourceType"] == "Library"
+    assert m["meta"]["profile"] == [CRMI_MANIFEST_PROFILE]
+    assert m["type"]["coding"][0]["code"] == "asset-collection"
+    assert m["status"] == "active"
+    assert "content" not in m  # crmi-manifestlibrary: content 0..0
+
+
+def test_manifest_lists_root_as_component_with_version():
+    m = build_outcome_manifest(Q, [], [])
+    assert m["relatedArtifact"] == [
+        {"type": "composed-of", "display": "Q One", "resource": "http://x/Questionnaire/q1|2.0"}
+    ]
+
+
+def test_manifest_pins_the_resolved_version_of_each_dependency():
+    """An unversioned reference is recorded with the version actually packaged."""
+    vs = {"resourceType": "ValueSet", "url": "http://x/VS/a", "version": "2.0", "name": "A"}
+    m = build_outcome_manifest(Q, [("http://x/VS/a", vs), ("http://x/CS/missing", None)], [])
+    deps = [r for r in m["relatedArtifact"] if r["type"] == "depends-on"]
+    assert deps == [
+        {"type": "depends-on", "resource": "http://x/VS/a|2.0", "display": "A"},
+        {"type": "depends-on", "resource": "http://x/CS/missing"},
+    ]
+
+
+def test_manifest_carries_messages_only_when_there_are_warnings():
+    assert "contained" not in build_outcome_manifest(Q, [], [])
+    assert "extension" not in build_outcome_manifest(Q, [], [])
+
+    w = {"severity": "warning", "code": "not-found", "diagnostics": "Referenced ValueSet not found: x"}
+    m = build_outcome_manifest(Q, [], [w])
+    assert m["extension"] == [{"url": CQF_MESSAGES, "valueReference": {"reference": "#messages"}}]
+    oo = m["contained"][0]
+    assert (oo["resourceType"], oo["id"]) == ("OperationOutcome", "messages")
+    assert oo["issue"] == [w]
+
+
+def test_canonical_of_falls_back_for_artifacts_without_url():
+    assert canonical_of({"resourceType": "Questionnaire", "id": "draft"}) == "Questionnaire/draft"
+    assert canonical_of({"resourceType": "Questionnaire"}) == "Questionnaire"
+    assert canonical_of({"resourceType": "ValueSet", "url": "http://x/VS/a"}) == "http://x/VS/a"
+
+
+async def test_build_bundle_puts_manifest_first_and_messages_into_it():
+    svc = _StubService({})  # every lookup misses
+    q = {**Q, "item": [{"linkId": "1", "answerValueSet": "http://x/VS/gone"},
+                       {"linkId": "2", "answerValueSet": "http://x/VS/gone"}]}
+    bundle = await svc.build_bundle(q, include_dependencies=True)
+
+    types = [e["resource"]["resourceType"] for e in bundle["entry"]]
+    assert types == ["Library", "Questionnaire"]  # no separate OperationOutcome entry
+    manifest = bundle["entry"][0]["resource"]
+    issues = manifest["contained"][0]["issue"]
+    assert len(issues) == 1, "a reference used twice is reported once"
+    assert [r["resource"] for r in manifest["relatedArtifact"]] == [
+        "http://x/Questionnaire/q1|2.0", "http://x/VS/gone"]

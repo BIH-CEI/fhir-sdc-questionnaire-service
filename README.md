@@ -55,7 +55,7 @@ Image tags:
 | `ValueSet/$expand`, `$validate-code`, `CodeSystem/$lookup` | Working | HAPI (`$expand` needs the Lucene index) |
 | `Questionnaire/$populate`, `QuestionnaireResponse/$extract` | Working | HAPI Clinical Reasoning |
 | `Library/$evaluate` (CQL scoring) | Working | HAPI Clinical Reasoning |
-| `Questionnaire/$package` | Working | FastAPI (HAPI's native `$package` fails on MII PRO content) |
+| `Questionnaire/$package` (CRMI `crmi-package`; SDC defines none) | Working | FastAPI: CRMI outcome manifest first, then Questionnaire + dependencies. HAPI's native one crashes on MII PRO content (NPE, no manifest) |
 | `Questionnaire/$localize` | Working | FastAPI |
 | `Questionnaire/$compute-and-extract` | Working | FastAPI: evaluates scoring CQL and builds Observations |
 | `Questionnaire/$assemble` | Intentionally not implemented | It is optional (MAY) in SDC, and no bundled Questionnaire is modular |

@@ -1,4 +1,14 @@
-"""Service for packaging Questionnaires with dependencies (SDC $package operation)."""
+"""Service for packaging Questionnaires with dependencies ($package).
+
+$package is a CRMI operation (hl7.fhir.uv.crmi 2.0.0, OperationDefinition
+crmi-package); SDC itself does not define one. CRMI requires that "the first
+resource returned in the resulting package will be an outcome manifest" — a
+Library of type asset-collection (profile crmi-manifestlibrary) that lists the
+packaged artifact (composed-of) and its dependencies (depends-on) and carries
+the packaging messages as a contained OperationOutcome (cqf-messages).
+HAPI's native $package crashes exactly there for Questionnaires (it never
+creates the manifest; see tests/upstream/test_hapi_native_package.py).
+"""
 from typing import Optional, List, Dict, Set
 from datetime import datetime
 import json
@@ -10,6 +20,60 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_BUNDLE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 MAX_BUNDLE_ENTRIES = 100
+
+CRMI_MANIFEST_PROFILE = "http://hl7.org/fhir/uv/crmi/StructureDefinition/crmi-manifestlibrary"
+CQF_MESSAGES = "http://hl7.org/fhir/StructureDefinition/cqf-messages"
+LIBRARY_TYPE_SYSTEM = "http://terminology.hl7.org/CodeSystem/library-type"
+
+
+def canonical_of(resource: dict) -> str:
+    """`url|version` of a canonical resource; falls back to a relative
+    reference for artifacts without a url (e.g. a POSTed draft)."""
+    url = resource.get("url")
+    if not url:
+        rid = resource.get("id")
+        return f"{resource.get('resourceType')}/{rid}" if rid else resource.get("resourceType", "")
+    return f"{url}|{resource['version']}" if resource.get("version") else url
+
+
+def build_outcome_manifest(root: dict, references: List[tuple], warnings: List[Dict]) -> dict:
+    """CRMI outcome manifest for a package of `root`.
+
+    references: (canonical as referenced, resolved resource or None), in
+    traversal order. A resolved dependency is recorded with the exact
+    url|version that was packaged; an unresolved one as it was referenced.
+    """
+    related = [{
+        "type": "composed-of",
+        "display": root.get("title") or root.get("name"),
+        "resource": canonical_of(root),
+    }]
+    for referenced, resolved in references:
+        dep = {"type": "depends-on",
+               "resource": canonical_of(resolved) if resolved else referenced}
+        if resolved and (resolved.get("title") or resolved.get("name")):
+            dep["display"] = resolved.get("title") or resolved.get("name")
+        related.append(dep)
+
+    manifest = {
+        "resourceType": "Library",
+        "id": "package-manifest",
+        "meta": {"profile": [CRMI_MANIFEST_PROFILE]},
+        "status": "active",
+        "type": {"coding": [{"system": LIBRARY_TYPE_SYSTEM, "code": "asset-collection"}]},
+        "title": f"Package of {root.get('title') or root.get('name') or canonical_of(root)}",
+        "date": datetime.utcnow().isoformat() + "Z",
+        "relatedArtifact": related,
+    }
+    if warnings:
+        manifest["contained"] = [{
+            "resourceType": "OperationOutcome",
+            "id": "messages",
+            "issue": [{"severity": w["severity"], "code": w["code"], "diagnostics": w["diagnostics"]}
+                      for w in warnings],
+        }]
+        manifest["extension"] = [{"url": CQF_MESSAGES, "valueReference": {"reference": "#messages"}}]
+    return manifest
 
 
 def version_key(version: Optional[str]) -> tuple:
@@ -58,6 +122,8 @@ class DependencyResolver:
         self.service = package_service
         self.processed_urls: Set[str] = set()
         self.warnings: List[Dict] = []
+        # (canonical as referenced, resolved resource or None) for the manifest
+        self.references: List[tuple] = []
 
     def extract_valueset_refs(self, questionnaire: dict) -> List[str]:
         """
@@ -177,6 +243,8 @@ class DependencyResolver:
                 continue
 
             valueset = await self.fetch_canonical(url, "ValueSet", preferred)
+            self.references.append((url, valueset))
+            self.processed_urls.add(url)
 
             if not valueset:
                 self.warnings.append({
@@ -186,7 +254,6 @@ class DependencyResolver:
                 })
                 continue
 
-            self.processed_urls.add(url)
             all_resources.append(valueset)
 
             # Extract CodeSystems from ValueSet
@@ -197,9 +264,10 @@ class DependencyResolver:
                     continue
 
                 codesystem = await self.fetch_canonical(cs_url, "CodeSystem", preferred)
+                self.references.append((cs_url, codesystem))
+                self.processed_urls.add(cs_url)
 
                 if codesystem:
-                    self.processed_urls.add(cs_url)
                     all_resources.append(codesystem)
                 else:
                     # Don't warn about missing external CodeSystems (LOINC, SNOMED)
@@ -219,9 +287,10 @@ class DependencyResolver:
                 continue
 
             library = await self.fetch_canonical(url, "Library", preferred)
+            self.references.append((url, library))
+            self.processed_urls.add(url)
 
             if library:
-                self.processed_urls.add(url)
                 all_resources.append(library)
 
                 # Check for nested library references
@@ -229,8 +298,9 @@ class DependencyResolver:
                 for nested_url in nested_library_urls:
                     if nested_url not in self.processed_urls:
                         nested_library = await self.fetch_canonical(nested_url, "Library", preferred)
+                        self.references.append((nested_url, nested_library))
+                        self.processed_urls.add(nested_url)
                         if nested_library:
-                            self.processed_urls.add(nested_url)
                             all_resources.append(nested_library)
             else:
                 self.warnings.append({
@@ -248,9 +318,10 @@ class DependencyResolver:
                 continue
 
             structuremap = await self.fetch_canonical(url, "StructureMap", preferred)
+            self.references.append((url, structuremap))
+            self.processed_urls.add(url)
 
             if structuremap:
-                self.processed_urls.add(url)
                 all_resources.append(structuremap)
             else:
                 self.warnings.append({
@@ -388,25 +459,16 @@ class PackageService:
         Returns:
             FHIR Bundle resource
         """
-        # Initialize bundle entries with Questionnaire first
-        bundle_entries = [{"resource": questionnaire}]
-
-        if not include_dependencies:
-            # Return minimal bundle
-            return self.create_bundle(bundle_entries)
-
-        # Resolve dependencies
         resolver = DependencyResolver(self)
-        dependencies = await resolver.resolve_all_dependencies(questionnaire)
+        dependencies = (
+            await resolver.resolve_all_dependencies(questionnaire) if include_dependencies else []
+        )
 
-        # Add dependencies to bundle
+        # CRMI: the outcome manifest comes first, then the packaged artifact
+        # and its dependencies. Packaging messages live in the manifest.
+        manifest = build_outcome_manifest(questionnaire, resolver.references, resolver.warnings)
+        bundle_entries = [{"resource": manifest}, {"resource": questionnaire}]
         bundle_entries.extend([{"resource": dep} for dep in dependencies])
-
-        # Add warnings if any dependencies missing
-        if resolver.warnings:
-            bundle_entries.append({
-                "resource": self.create_operation_outcome(resolver.warnings)
-            })
 
         # Check size limits
         bundle = self.create_bundle(bundle_entries)
@@ -490,28 +552,6 @@ class PackageService:
                 ]
             },
             "entry": entries
-        }
-
-    def create_operation_outcome(self, issues: list) -> dict:
-        """
-        Create OperationOutcome for warnings/errors.
-
-        Args:
-            issues: List of issue dicts with severity, code, diagnostics
-
-        Returns:
-            FHIR OperationOutcome resource
-        """
-        return {
-            "resourceType": "OperationOutcome",
-            "issue": [
-                {
-                    "severity": issue["severity"],
-                    "code": issue["code"],
-                    "diagnostics": issue["diagnostics"]
-                }
-                for issue in issues
-            ]
         }
 
     async def close(self):
