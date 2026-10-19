@@ -5,7 +5,7 @@ How the service and its content are kept current, and what an operator does rout
 | What | Where it is pinned | How it is updated |
 |------|--------------------|-------------------|
 | Service (`FORM_MANAGER_VERSION`) | `versions.env` | Manually, on functional changes |
-| HAPI FHIR base image | `Dockerfile.form-manager` (`HAPI_BASE`, tag + digest) | Renovate proposes new images |
+| HAPI FHIR base image | `Dockerfile.form-manager` (`HAPI_BASE`, tag + digest) | Renovate proposes new images as pull requests; never merged automatically |
 | MII PRO (current, retained) | `Dockerfile.form-manager` (version + SHA-256) | Renovate; a workflow re-pins the SHA |
 | SDC | `Dockerfile.form-manager` | Manually (a draft→active patch may need review) |
 | PRO Library | `versions.env` + vendored package | Manually |
@@ -33,9 +33,9 @@ Content of a version that was already installed under the same version number is
 
 | Task | How |
 |------|-----|
-| Add or remove a site | Edit `pki/allowlist.map` (`<fingerprint> <site>;`), then `docker compose exec proxy nginx -s reload` |
-| Rotate the server certificate | Replace `pki/server.pem`/`server.key`, reload nginx |
-| Change trusted CAs | Edit `pki/ca.pem`, reload nginx |
+| Add or remove a site | Edit `pki/allowlist.map` (`<fingerprint> <site>;`), then `docker compose restart proxy` (a restart re-runs the test-PKI guard, a reload would not) |
+| Rotate the server certificate | Replace `pki/server.pem`/`server.key`, then `docker compose restart proxy` |
+| Change trusted CAs | Edit `pki/ca.pem`, then `docker compose restart proxy` |
 | Backup | `pg_dump` of `db`; keep the `hapi_lucene` volume with it or run `$reindex` after a restore |
 | Re-run the loader | `docker compose run --rm loader` |
 | Logs and audit | `docker compose logs proxy` (site, fingerprint, request per line) |
@@ -44,7 +44,7 @@ Content of a version that was already installed under the same version number is
 
 - **Per-site licence gate:** every allowlisted site sees all content.
 - **No revocation checking** for client certificates.
-- **Write operations** through the FHIR base are not restricted per site beyond the allowlist.
+- **HAPI base image CVEs:** the current `hapiproject/hapi` image carries known vulnerabilities in bundled libraries (spring-webmvc; the OpenTelemetry agent jar, which is not loaded). The image is pinned by tag and digest; updates arrive as reviewed Renovate pull requests, never automatically.
 - **No request-time validation** on the server; content is validated at publication time.
 
 ### Ownership

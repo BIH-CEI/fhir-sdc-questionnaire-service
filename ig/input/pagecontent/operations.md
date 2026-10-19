@@ -1,15 +1,16 @@
-All operations live under one FHIR base, `https://<host>/fhir/`. The proxy routes the Questionnaire operations marked *sidecar* to the FastAPI sidecar and everything else to HAPI.
+All operations live under one FHIR base, `https://<host>/fhir/`. The service is **read-only for sites**: content changes only through package updates, and no patient data is accepted. The proxy routes the Questionnaire operations marked *sidecar* to the FastAPI sidecar and everything else to HAPI.
 
 | Operation | Served by | Definition |
 |-----------|-----------|------------|
 | `Questionnaire/[id]/$package`, `Questionnaire/$package?url=…[&version=…]` | sidecar | [CRMI `crmi-package`](http://hl7.org/fhir/uv/crmi/OperationDefinition/crmi-package) |
 | `Questionnaire/[id]/$localize?language=…`, `Questionnaire/$localize` | sidecar | [$localize](OperationDefinition-QuestionnaireLocalize.html) |
 | `Questionnaire/[id]/$languages` | sidecar | [$languages](OperationDefinition-QuestionnaireLanguages.html) |
-| `Questionnaire/[id]/$compute-and-extract` | sidecar | [$compute-and-extract](OperationDefinition-QuestionnaireComputeAndExtract.html) |
-| `Questionnaire/$populate` | HAPI (Clinical Reasoning) | [SDC](http://hl7.org/fhir/uv/sdc/OperationDefinition/Questionnaire-populate) |
-| `QuestionnaireResponse/$extract` | HAPI (Clinical Reasoning) | [SDC](http://hl7.org/fhir/uv/sdc/OperationDefinition/QuestionnaireResponse-extract) |
 | `ValueSet/$expand`, `CodeSystem/$lookup` | HAPI | FHIR core |
 | read, vread, search on Questionnaire, ValueSet, CodeSystem, Library, ObservationDefinition | HAPI | FHIR core |
+
+### Not available to sites
+
+Refused by the proxy: creating, updating or deleting anything (405); system operations (`[base]/$…`); operations that take or produce patient data (`$populate`, `$extract`, `$compute-and-extract`, `Library/$evaluate`); patient-data resource types (QuestionnaireResponse, Observation, Patient, …) (403). Sites run `$populate`, `$extract` and scoring on their own servers, with the content fetched from here.
 
 ### $package
 
@@ -34,4 +35,4 @@ The content packages ship ValueSets **without expansions**. Expand `answerValueS
 
 ### Scores
 
-`$compute-and-extract` evaluates the scoring CQL of a Questionnaire for a patient and creates Observations. HAPI's `$extract` does not evaluate `sdc-calculatedExpression`, so scores need this operation. The subject's QuestionnaireResponse must be on the server first.
+Scoring logic ships with the content: CQL Libraries (PRO Library) and `calculatedExpression`s in the Questionnaires. Sites evaluate them locally. The sidecar's [$compute-and-extract](OperationDefinition-QuestionnaireComputeAndExtract.html) implements this for HAPI-based site servers but is not exposed by the central read-only service.

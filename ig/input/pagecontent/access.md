@@ -4,7 +4,8 @@ Access is machine-to-machine with **mutual TLS**. A site's system (typically its
 |------|------|-------------------|
 | 1. Authentication | The client certificate chains to a CA in the server's trust bundle | `401` OperationOutcome (`login`) |
 | 2. Authorisation | The certificate's SHA-1 fingerprint is on the site allowlist | `403` OperationOutcome (`forbidden`) |
-| 3. Routing | Only paths under `/fhir/` are served | `404` OperationOutcome (`not-found`) |
+| 3. Read-only | `GET`/`HEAD`; `POST` only for read-only operations (`$expand`, `$validate-code`, `$lookup`, `$subsumes`, `$package`, `$localize`) | `405` (`not-supported`) for writes; `403` (`forbidden`) for system operations, patient-data types and operations that take patient data |
+| 4. Routing | Only paths under `/fhir/` are served | `404` OperationOutcome (`not-found`) |
 
 A valid certificate alone is not enough: CAs like DFN/GÉANT TCS issue certificates to many organisations, so every site is registered individually by fingerprint (as in the NUM Data Sharing Framework).
 

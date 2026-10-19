@@ -80,7 +80,7 @@ Title: "Questionnaire $compute-and-extract"
 * type = false
 * instance = true
 * affectsState = true
-* description = "Evaluates the Questionnaire's scoring CQL (`cqf-library`) for a subject and turns the results into Observations: `item.code` becomes `Observation.code`, the item's CQL `calculatedExpression` names the define, `ObservationDefinition.qualifiedInterval` supplies the interpretation. Bridges a gap in HAPI Clinical Reasoning, whose `$extract` does not evaluate `calculatedExpression`. The subject's QuestionnaireResponse must already be on the server. Query parameter `persist=false` returns the transaction Bundle instead of storing it."
+* description = "Not exposed by the read-only deployment (no patient data reaches the central server); documented for site-local use of the sidecar. Evaluates the Questionnaire's scoring CQL (`cqf-library`) for a subject and turns the results into Observations: `item.code` becomes `Observation.code`, the item's CQL `calculatedExpression` names the define, `ObservationDefinition.qualifiedInterval` supplies the interpretation. Bridges a gap in HAPI Clinical Reasoning, whose `$extract` does not evaluate `calculatedExpression`. The subject's QuestionnaireResponse must already be on the server. Query parameter `persist=false` returns the transaction Bundle instead of storing it."
 * parameter[0].name = #subject
 * parameter[=].use = #in
 * parameter[=].min = 1
