@@ -72,7 +72,7 @@ Fine for demos and internal staging. **Not production-ready:**
   - Startup ordering relies on sleeps.
   - No restart policies, no TLS, no reverse proxy.
 - Request-time validation is off on purpose.
-- The planned central delivery model (NUM / mTLS) is not implemented.
+- mTLS access is tested (`docker-compose.mtls.yml`: client certificates, allowlist, one FHIR base), but there is no production stack yet, and the per-site licence gate is not implemented.
 
 ## Known limitations
 

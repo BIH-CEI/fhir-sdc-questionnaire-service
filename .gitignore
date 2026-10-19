@@ -63,3 +63,8 @@ local-packages-image/
 api/.coverage
 api/htmlcov/
 api/coverage.xml
+
+# Committed on purpose: TEST-ONLY PKI for the mTLS CI test (CA key discarded,
+# refused by nginx when MTLS_ENV=production). Never add real keys here.
+!deploy/mtls/test-pki/*.key
+!deploy/mtls/test-pki/*.pem

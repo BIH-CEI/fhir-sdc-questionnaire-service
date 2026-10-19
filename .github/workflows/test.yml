@@ -106,6 +106,18 @@ jobs:
             --cov=app --cov-report=xml --cov-report=html --cov-report=term \
             --cov-fail-under=75
 
+      # nginx front door with the committed TEST-ONLY PKI: certificate checks,
+      # allowlist, FHIR routing (sidecar vs. HAPI) and the production guard.
+      - name: mTLS front door (test PKI)
+        env:
+          # Same image as the test stack, and --no-deps: otherwise compose sees
+          # a changed config and recreates HAPI (in-memory DB, content lost).
+          FORM_MANAGER_IMAGE: fhir-sdc-form-manager:ci
+        run: |
+          docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml up -d --no-deps mtls-proxy
+          timeout 60 bash -c 'until curl -sk https://localhost:8443/ -o /dev/null; do sleep 2; done'
+          scripts/test-mtls.sh
+
       - name: Archive coverage report
         if: always()
         uses: actions/upload-artifact@v4
@@ -118,8 +130,8 @@ jobs:
       - name: Dump container logs on failure
         if: failure()
         run: |
-          docker compose -f docker-compose.test.yml logs --tail=300 || true
+          docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml logs --tail=300 || true
 
       - name: Tear down test stack
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v || true
+        run: docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml down -v || true
