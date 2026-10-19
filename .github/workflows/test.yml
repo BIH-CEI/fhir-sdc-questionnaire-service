@@ -67,7 +67,7 @@ jobs:
       # Docker needed, so a logic bug fails in seconds, not after the boot.
       - name: Unit tests
         run: |
-          cd api && pytest tests/unit -q
+          (cd api && pytest tests/unit -q)
           bash hapi-scripts/test-loader-version-order.sh
 
       - name: Start test stack (HAPI image + FastAPI sidecar)
