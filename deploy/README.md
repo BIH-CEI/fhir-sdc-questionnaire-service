@@ -59,4 +59,6 @@ Add a site: append `<fingerprint> <site>;` to `pki/allowlist.map`, then `docker 
 - Certificate revocation lists (nginx `ssl_crl`).
 - Authentication inside the backend network: HAPI and the sidecar trust the proxy.
 
+After every deployment run the acceptance battery against the server: `scripts/acceptance-test.sh https://<host> site.pem site.key` (see `acceptance/README.md`); its JUnit report is the acceptance record.
+
 Tested end to end in CI (`scripts/test-deploy-bundle.sh`, locally `make test-deploy`).

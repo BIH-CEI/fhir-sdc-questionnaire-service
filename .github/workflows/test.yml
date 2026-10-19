@@ -152,7 +152,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Bundle test (build images, start, mTLS checks)
+      - name: Set up Python (acceptance battery)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Bundle test (build images, start, mTLS checks, acceptance battery)
         env:
           KEEP: "1"   # leave the stack up so the next step can dump its logs
         run: scripts/test-deploy-bundle.sh

@@ -68,3 +68,7 @@ api/coverage.xml
 # refused by nginx when MTLS_ENV=production). Never add real keys here.
 !deploy/mtls/test-pki/*.key
 !deploy/mtls/test-pki/*.pem
+
+# acceptance runner venv and reports
+.venv-acceptance/
+acceptance-report.xml

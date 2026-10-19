@@ -66,6 +66,12 @@ until curl -sk "https://localhost:$PROXY_PORT/" -o /dev/null; do sleep 2; done
 MTLS_URL="https://localhost:$PROXY_PORT" MTLS_PROXY_CONTAINER="$("${C[@]}" ps -q proxy)" \
     scripts/test-mtls.sh
 
+log "acceptance battery against the bundle"
+PKI="$ROOT/deploy/mtls/test-pki"
+FM_UNLISTED_CERT="$PKI/site-b.pem" FM_UNLISTED_KEY="$PKI/site-b.key" \
+ACCEPTANCE_REPORT="${ACCEPTANCE_REPORT:-$ROOT/acceptance-report.xml}" \
+    scripts/acceptance-test.sh "https://localhost:$PROXY_PORT" "$PKI/site-a.pem" "$PKI/site-a.key" "$PKI/ca.pem"
+
 log "proxy image default refuses the test PKI"
 name="fm-proxy-default-$$"
 docker run -d --name "$name" \
