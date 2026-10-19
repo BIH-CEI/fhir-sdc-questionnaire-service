@@ -73,7 +73,7 @@ Routes under `/api/questionnaires` (`api/app/routers/questionnaires.py`):
 | `$localize`: `GET /{id}/$localize`, `GET /$localize`, `POST /$localize`, `GET /{id}/$languages` | `localization_service.py` | One-language rendering of a multilingual Questionnaire |
 | `POST /{id}/$compute-and-extract` | `scoring_extract_service.py` | See below |
 
-Also `POST /api/pro-ctcae/score` and `GET /health` (reports `FORM_MANAGER_VERSION`). Literal `$op` routes are sorted ahead of `/{id}`, so `$package` is never forwarded to HAPI as an id.
+Errors are FHIR `OperationOutcome`s (`application/fhir+json`; handlers in `main.py` map the HTTP status to the issue code, request-validation errors carry an `expression`). Also `POST /api/pro-ctcae/score` and `GET /health` (reports `FORM_MANAGER_VERSION`). Literal `$op` routes are sorted ahead of `/{id}`, so `$package` is never forwarded to HAPI as an id.
 
 **`$compute-and-extract`** bridges a CR gap: HAPI CR does not evaluate `sdc-calculatedExpression` during `$populate` or `$extract`. The sidecar:
 

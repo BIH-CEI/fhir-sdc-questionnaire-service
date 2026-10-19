@@ -115,7 +115,7 @@ async def test_subject_without_qr_returns_422(api_client, test_subject):
     """All CQL defines evaluate to null → no Observation can be built → 422, never 500."""
     result = await compute_and_extract(api_client, PHQ9_Q_ID, test_subject)
     assert result["status"] == 422
-    assert "No Observations" in result["body"]["detail"]
+    assert "No Observations" in result["body"]["issue"][0]["diagnostics"]
 
 
 async def test_unknown_questionnaire_returns_404(api_client):
@@ -137,7 +137,7 @@ async def test_questionnaire_without_cqf_library_returns_422(api_client, clean_q
     })
     result = await compute_and_extract(api_client, q_id, test_subject)
     assert result["status"] == 422
-    assert "cqf-library" in result["body"]["detail"]
+    assert "cqf-library" in result["body"]["issue"][0]["diagnostics"]
 
 
 @pytest.mark.parametrize("ordinal,raw,tscore", [(1, 4, 41.0), (3, 12, 62.2), (5, 20, 79.4)])

@@ -45,7 +45,6 @@ All are `strict=True`: an unexpected pass fails the run, which is the point.
 |------|-----|
 | `upstream/test_hapi_native_package::test_hapi_native_package_is_crmi_conformant` | HAPI's own `$package` 500s on MII PRO (NPE at `PackageVisitor.java:276`: no CRMI outcome manifest for non-Library roots). Flips when it returns a CRMI package; then reconsider the sidecar layer. |
 | `integration/test_proctcae_scoring::test_score_returns_composite_grades` | No package ships `Library/PRO_CTCAE`; the endpoint cannot score. Ship the CQL or remove the router (bead). |
-| `integration/test_sidecar_errors::test_error_body_is_operation_outcome` | Sidecar errors are FastAPI `detail` objects, not OperationOutcome (bead). |
 | `integration/test_questionnaire_crud::test_create_missing_required_field_is_rejected` | No request-time validation by design; no sidecar schema check yet. |
 | `integration/test_questionnaire_crud::test_update_removes_omitted_fields` | PUT sets attributes one by one; omitted fields survive (bead). |
 | `integration/test_questionnaire_crud::test_search_total_is_server_total_not_page_length` | `Bundle.total` is the page length (bead). |
