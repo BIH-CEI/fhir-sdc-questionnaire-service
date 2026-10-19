@@ -41,6 +41,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Set up Ruby (Jekyll renders the IG pages)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install Jekyll
+        run: gem install jekyll --no-document
+
       - name: Install SUSHI and fetch the IG Publisher
         run: |
           npm install -g "fsh-sushi@${SUSHI_VERSION}"
