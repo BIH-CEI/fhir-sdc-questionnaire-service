@@ -128,12 +128,13 @@ Phase 1 of the access model: an nginx proxy is the only entry point; HAPI and th
 | Authentication | `ssl_verify_client on` against `ca.pem` (bundle of trusted CAs). No or untrusted certificate → 401 OperationOutcome. |
 | Authorisation | SHA-1 certificate fingerprint must be in `allowlist.map` (`<fp> <site>;`), else 403. A valid certificate alone is not enough. |
 | Identity | `X-Client-Site`, `-Cert-Fingerprint`, `-Cert-Subject` are set by nginx and overwrite client-sent values. The sidecar does not read them yet (licence gate = phase 2). |
-| Routing | One FHIR base: `/fhir/Questionnaire/{id}/$package\|$localize\|$languages\|$compute-and-extract` and type-level `$package`/`$localize` go to the sidecar, all other `/fhir/` to HAPI, everything else 404. |
+| Read-only | Sites only read; content changes only through package updates (the loader writes over the internal network). `GET`/`HEAD` allowed; `POST` only for `ValueSet/$expand`, `$validate-code`, `CodeSystem/$lookup`/`$validate-code`/`$subsumes`, `Questionnaire/$package`/`$localize`. Everything else → 405. Blocked whatever the method (403): system operations `/fhir/$…`, `$populate`/`$extract`/`$compute-and-extract`/`$evaluate`/`$cql`/`$export`/`$expunge`/`$reindex` etc., patient-data types (QuestionnaireResponse, Observation, Patient, …), Swagger/api-docs. Rules match the decoded `$uri`, so `%24`-encodings do not bypass them. |
+| Routing | One FHIR base: `/fhir/Questionnaire/{id}/$package\|$localize\|$languages` (id restricted to FHIR id syntax) and type-level `$package`/`$localize` go to the sidecar, all other `/fhir/` to HAPI, everything else 404. |
 | Audit | Access log records site, fingerprint and request. |
 
 **Test PKI:** `deploy/mtls/test-pki/` is committed on purpose (CA key discarded), so CI and local runs use the same certificates and a hard-coded allowlist: `site-a` allowed, `site-b` trusted but not listed, `rogue` from a foreign CA. Regenerate with `deploy/mtls/make-test-pki.sh`.
 
-**Production guard:** with `MTLS_ENV=production`, the entrypoint hook `10-forbid-test-pki.sh` refuses to start if the CA bundle contains the test CA (also inside a larger bundle) or the allowlist carries the TEST ONLY marker. A production stack mounts its own `ca.pem`, server certificate and allowlist.
+**Production guard:** unless `MTLS_ENV` is exactly `test` (any other value, typos included, counts as production), the entrypoint hook `10-forbid-test-pki.sh` refuses to start if the CA bundle contains the test CA (also inside a larger bundle) or the allowlist carries the TEST ONLY marker. A production stack mounts its own `ca.pem`, server certificate and allowlist.
 
 ## Deployment bundle (`deploy/`)
 

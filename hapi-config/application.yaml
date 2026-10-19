@@ -20,6 +20,9 @@ spring:
 
 hapi:
   fhir:
+    # No Swagger UI / OpenAPI docs: not needed by clients, extra attack surface.
+    openapi_enabled: false
+
     # Server settings
     fhir_version: R4
 

@@ -58,6 +58,34 @@ fi
 check "ValueSet/\$expand -> HAPI" 200 '.resourceType=="ValueSet"' site-a \
     "/fhir/ValueSet/\$expand?url=https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-4pt"
 
+echo "== read-only (content changes only through packages; no patient data)"
+VS4="https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-4pt"
+check "POST ValueSet/\$expand (read-only op) allowed" 200 '.resourceType=="ValueSet"' site-a \
+    "/fhir/ValueSet/\$expand" -X POST -H "Content-Type: application/fhir+json" \
+    --data "{\"resourceType\":\"Parameters\",\"parameter\":[{\"name\":\"url\",\"valueUri\":\"$VS4\"}]}"
+check "create (POST Questionnaire) refused"   405 '.issue[0].code=="not-supported"' site-a /fhir/Questionnaire -X POST -H "Content-Type: application/fhir+json" --data '{"resourceType":"Questionnaire","status":"draft"}'
+if [ -n "$qid" ]; then
+    check "update (PUT Questionnaire) refused"    405 '.issue[0].code=="not-supported"' site-a "/fhir/Questionnaire/$qid" -X PUT -H "Content-Type: application/fhir+json" --data '{"resourceType":"Questionnaire","status":"draft"}'
+    check "DELETE Questionnaire refused"          405 '.issue[0].code=="not-supported"' site-a "/fhir/Questionnaire/$qid" -X DELETE
+    check "instance \$expunge refused"            403 '.issue[0].code=="forbidden"'     site-a "/fhir/Questionnaire/$qid/\$expunge" -X POST
+    check "\$populate refused (patient data)"     403 '.issue[0].code=="forbidden"'     site-a "/fhir/Questionnaire/$qid/\$populate"
+    check "\$compute-and-extract refused"         403 '.issue[0].code=="forbidden"'     site-a "/fhir/Questionnaire/$qid/\$compute-and-extract" -X POST
+fi
+check "conditional DELETE refused"            405 '.issue[0].code=="not-supported"' site-a "/fhir/Questionnaire?url=x" -X DELETE
+check "system \$reindex refused"              403 '.issue[0].code=="forbidden"'     site-a "/fhir/\$reindex" -X POST
+check "encoded system op (%24reindex) refused" 403 '.issue[0].code=="forbidden"'     site-a "/fhir/%24reindex" -X POST
+check "transaction POST to base refused"      405 '.issue[0].code=="not-supported"' site-a "/fhir/" -X POST -H "Content-Type: application/fhir+json" --data '{"resourceType":"Bundle","type":"transaction"}'
+check "QuestionnaireResponse unreachable"     403 '.issue[0].code=="forbidden"'     site-a "/fhir/QuestionnaireResponse"
+check "Patient unreachable"                   403 '.issue[0].code=="forbidden"'     site-a "/fhir/Patient/1"
+check "QuestionnaireResponse/\$extract refused" 403 '.issue[0].code=="forbidden"'   site-a "/fhir/QuestionnaireResponse/\$extract" -X POST
+check "swagger-ui unreachable"                403 '.issue[0].code=="forbidden"'     site-a "/fhir/swagger-ui/index.html"
+status=$(req site-a "/fhir/Questionnaire/search%3Fq=x/\$package")
+if [ "$status" != 200 ] && ! jq -e '.resourceType=="Bundle"' "$BODY" >/dev/null 2>&1; then
+    echo "  ok    encoded '?' in an id does not reach other sidecar routes ($status)"
+else
+    echo "  FAIL  encoded '?' reached a sidecar route: $status"; fails=$((fails + 1))
+fi
+
 echo "== spoofing"
 log_line=$(docker logs "$PROXY_CONTAINER" 2>&1 | grep -c 'site="site-a"')
 check "a forged X-Client-Site header does not bypass the allowlist" 403 '' site-b /fhir/metadata -H "X-Client-Site: site-a"
@@ -67,14 +95,14 @@ echo "== production guard"
 guard() {  # $1 description, $2 expected (refuse|start), $3 ca.pem, $4 allowlist
     local name="mtls-guard-$$" logs
     docker rm -f "$name" >/dev/null 2>&1
-    docker run -d --name "$name" -e MTLS_ENV=production \
+    docker run -d --name "$name" -e MTLS_ENV="${guard_env:-production}" \
         -e HAPI_UPSTREAM=127.0.0.1:1 -e SIDECAR_UPSTREAM=127.0.0.1:1 \
         -v "$ROOT/deploy/mtls/nginx-mtls.conf:/etc/nginx/templates/default.conf.template:ro" \
         -v "$ROOT/deploy/mtls/10-forbid-test-pki.sh:/docker-entrypoint.d/10-forbid-test-pki.sh:ro" \
         -v "$ROOT/deploy/mtls/forbidden-test-ca.b64:/etc/nginx/forbidden-test-ca.b64:ro" \
         -v "$3:/etc/nginx/mtls/ca.pem:ro" -v "$4:/etc/nginx/mtls/allowlist.map:ro" \
         -v "$PKI/server.pem:/etc/nginx/mtls/server.pem:ro" -v "$PKI/server.key:/etc/nginx/mtls/server.key:ro" \
-        nginx:1.27-alpine >/dev/null
+        nginx:1.30-alpine >/dev/null
     sleep 3
     local running; running=$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null)
     logs=$(docker logs "$name" 2>&1)
@@ -94,6 +122,7 @@ cat "$tmp/prod-ca.pem" "$PKI/ca.pem" > "$tmp/bundle-with-test-ca.pem"
 guard "refuses the test CA"                     refuse "$PKI/ca.pem"                 "$tmp/prod-allowlist.map"
 guard "refuses a bundle that includes the test CA" refuse "$tmp/bundle-with-test-ca.pem" "$tmp/prod-allowlist.map"
 guard "refuses the test allowlist"              refuse "$tmp/prod-ca.pem"            "$PKI/allowlist.map"
+guard_env=prod guard "MTLS_ENV typo ('prod') still refuses the test CA" refuse "$PKI/ca.pem" "$tmp/prod-allowlist.map"
 guard "starts with a non-test CA and allowlist" start  "$tmp/prod-ca.pem"            "$tmp/prod-allowlist.map"
 
 echo

@@ -67,6 +67,7 @@ Image tags:
 
 The **deployment bundle** ([`deploy/`](deploy/README.md)) runs from published images: Form Manager, sidecar (`fhir-sdc-api`), loader (`fhir-sdc-loader`) and mTLS proxy (`fhir-sdc-proxy`), all with the same tags. It has healthchecks, restart policies, an internal backend network and client-certificate access with an allowlist. CI tests it end to end on every PR. Good for staging and pilot servers. Still missing for production:
 
+- **Read-only for sites** (by design): content changes only through package updates; no patient data reaches the server. Writing data per site would need per-site separation first.
 - **Per-site licence gate:** the proxy forwards the site identity, but the sidecar does not use it yet.
 - **Certificate revocation** (CRL/OCSP) is not configured.
 - **Backend trust:** HAPI and the sidecar have no authentication of their own; they rely on the internal network and the proxy.

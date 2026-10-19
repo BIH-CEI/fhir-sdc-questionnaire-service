@@ -186,7 +186,7 @@ services:
   # widget from a CDN and points it at the consumer HAPI. Same network so
   # CORS preflight stays simple (browser → localhost:3001 → localhost:8082).
   lhc-forms:
-    image: nginx:1.27-alpine
+    image: nginx:1.30-alpine
     container_name: lhc-forms
     ports:
       - "3004:80"

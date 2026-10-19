@@ -33,14 +33,14 @@ The first start takes a few minutes: HAPI installs the packages, then the loader
 
 - **No or untrusted client certificate:** 401 OperationOutcome.
 - **Trusted certificate not on the allowlist:** 403.
-- **Allowlisted:** everything under `/fhir/`. The sidecar operations (`/fhir/Questionnaire/{id}/$package`, `$localize`, `$languages`, `$compute-and-extract`, type-level `$package`/`$localize`) go to the sidecar, everything else to HAPI.
+- **Allowlisted:** read-only access under `/fhir/`: `GET`/`HEAD`, plus `POST` only for read-only operations (`ValueSet/$expand`, `$validate-code`, `CodeSystem/$lookup`, `Questionnaire/$package`, `$localize`). Creating, changing or deleting anything is refused (405); system operations, patient-data resource types and operations that take patient data (`$populate`, `$extract`, `$compute-and-extract`) are blocked (403). Content changes only through package updates. The sidecar operations (`/fhir/Questionnaire/{id}/$package`, `$localize`, `$languages`, `$compute-and-extract`, type-level `$package`/`$localize`) go to the sidecar, everything else to HAPI.
 - **Audit:** the proxy's access log records site, certificate fingerprint and request.
 
-Add a site: append `<fingerprint> <site>;` to `pki/allowlist.map`, then `docker compose exec proxy nginx -s reload`.
+Add a site: append `<fingerprint> <site>;` to `pki/allowlist.map`, then `docker compose restart proxy`. A restart (unlike `nginx -s reload`) re-runs the test-PKI guard.
 
 ## Safety nets
 
-- `MTLS_ENV=production` (the default in the proxy image and in `.env.example`): the proxy refuses to start with the TEST-ONLY PKI from `deploy/mtls/test-pki/`, also when the test CA is part of a larger bundle.
+- The proxy refuses to start with the TEST-ONLY PKI from `deploy/mtls/test-pki/`, also when the test CA is part of a larger bundle, unless `MTLS_ENV` is exactly `test`. Any other value, including typos, counts as production.
 - `db`, `hapi`, `sidecar` and `loader` sit on an internal network without a route outside; only `proxy` publishes a port.
 - Keep `postgres_data` and `hapi_lucene` together: losing one without the other needs a `$reindex`.
 
