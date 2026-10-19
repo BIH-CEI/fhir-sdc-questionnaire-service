@@ -135,12 +135,21 @@ Phase 1 of the access model: an nginx proxy is the only entry point; HAPI and th
 
 **Production guard:** with `MTLS_ENV=production`, the entrypoint hook `10-forbid-test-pki.sh` refuses to start if the CA bundle contains the test CA (also inside a larger bundle) or the allowlist carries the TEST ONLY marker. A production stack mounts its own `ca.pem`, server certificate and allowlist.
 
+## Deployment bundle (`deploy/`)
+
+`deploy/docker-compose.yml` wires five services from published images: `db` (Postgres), `hapi` (Form Manager), `loader` (one-shot), `sidecar`, `proxy`. Only `proxy` publishes a port; the others share an `internal: true` network.
+
+- **Images:** `Dockerfile.loader` builds FROM the Form Manager image of the same commit and copies its `/data/hapi/local-packages/`, so the loader and the server always agree on the content. `Dockerfile.proxy` bakes in `deploy/mtls/` (nginx config, production guard, test-CA reference) but no certificates, and defaults to `MTLS_ENV=production`. The sidecar image is `api/Dockerfile`.
+- **Startup:** healthchecks instead of sleeps. HAPI uses the `HealthCheck` class shipped with `hapiproject/hapi` >= v8.12.0-2 (`/actuator/health`; the image is distroless). The loader and sidecar wait for a healthy HAPI, the proxy for HAPI and sidecar.
+- **Publishing:** the `publish-components` job in `build-and-publish.yml` pushes the three images multi-arch after the Form Manager image, with the same tags. The dev `docker-compose.yml` builds the loader the same way (`additional_contexts: service:hapi-fhir`).
+- **Test:** `scripts/test-deploy-bundle.sh` (CI job `deploy-bundle`, `make test-deploy`).
+
 ## CI and Renovate
 
 | Workflow | Does |
 |----------|------|
-| `test.yml` | Unit layer first (no Docker), then: image build, test stack, loader over the image's package set, pytest `integration` + `content` + `upstream` with the sidecar in-process and a 75 % coverage gate. See [TESTING.md](TESTING.md). |
-| `build-and-publish.yml` | Builds and smoke-tests the image, then pushes multi-arch to GHCR on the default branch and on `v*` tags. Smoke checks: ≥ 20 MII PRO SDs; PRO Library PHQ-9 + manifest; PCOR `UKHDEDP` + `pcor-item-dictionary`; `$expand`. |
+| `test.yml` | Unit layer first (no Docker), then: image build, test stack, loader over the image's package set, pytest `integration` + `content` + `upstream` with the sidecar in-process and a 75 % coverage gate. See [TESTING.md](TESTING.md).. Job `deploy-bundle`: the deployment bundle end to end. |
+| `build-and-publish.yml` | Builds and smoke-tests the image, then pushes multi-arch to GHCR on the default branch and on `v*` tags. Smoke checks: ≥ 20 MII PRO SDs; PRO Library PHQ-9 + manifest; PCOR `UKHDEDP` + `pcor-item-dictionary`; `$expand`.. Then `publish-components` pushes `fhir-sdc-api`, `fhir-sdc-loader` and `fhir-sdc-proxy` with the same tags. |
 | `auto-pin-pro-sha.yml` | On Renovate PRs that touch the Dockerfile: recomputes and commits `MII_PRO_SHA256` |
 | `auto-vendor-pcor-mii.yml` | On Renovate PRs that touch `versions.env`: runs `scripts/refresh-pcor-mii.sh` and commits the tgz |
 | `pages.yml` | Publishes `docs/` to GitHub Pages |

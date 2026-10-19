@@ -1,0 +1,33 @@
+# Instance loader: PUTs the resource types HAPI's package installer skips
+# (Questionnaire, Library, Provenance, ImplementationGuide, ObservationDefinition,
+# TestScript) into a running Form Manager. One-shot job, then exits.
+#
+# The packages come from the Form Manager image of the SAME build, never from
+# local-packages/ (which may hold stale tarballs), so a deployment needs no
+# repo checkout and loader and server always agree on the content.
+#
+#   docker build -f Dockerfile.loader \
+#     --build-arg FORM_MANAGER_IMAGE=ghcr.io/bih-cei/fhir-sdc-form-manager:sha-abc1234 .
+ARG FORM_MANAGER_IMAGE=fhir-sdc-form-manager:local
+FROM ${FORM_MANAGER_IMAGE} AS content
+
+FROM alpine:3.20
+RUN apk add --no-cache bash curl jq tar
+COPY --from=content /data/hapi/local-packages/ /pkgs/
+COPY hapi-scripts/load-instance-resources.sh /usr/local/bin/load-instance-resources.sh
+
+# Retained older package versions to load as resolvable-by-url|version
+# (e.g. "de.medizininformatikinitiative.kerndatensatz.pros@2026.7.0"); set by
+# CI from the Form Manager's MII_PRO_RETAINED_VERSIONS, overridable at runtime.
+ARG RETAINED_PACKAGE_VERSIONS=""
+ENV PKGS_DIR=/pkgs \
+    HAPI_URL=http://hapi:8080/fhir \
+    WAIT_TIMEOUT=300 \
+    RETAINED_PACKAGE_VERSIONS=${RETAINED_PACKAGE_VERSIONS}
+
+USER nobody
+ENTRYPOINT ["bash", "/usr/local/bin/load-instance-resources.sh"]
+
+LABEL org.opencontainers.image.title="FHIR SDC Form Manager - instance loader" \
+      org.opencontainers.image.vendor="Berlin Institute of Health" \
+      org.opencontainers.image.licenses="Apache-2.0"
