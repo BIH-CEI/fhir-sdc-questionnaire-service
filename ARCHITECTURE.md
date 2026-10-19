@@ -125,6 +125,7 @@ Phase 1 of the access model: an nginx proxy is the only entry point; HAPI and th
 
 | Step | How |
 |------|-----|
+| TLS | TLS 1.3, and TLS 1.2 only with ECDHE + AES-GCM (BSI TR-02102-2), same policy as the MII terminology server (SU-TermServ); TLS ≤ 1.1 and CBC suites refused. |
 | Authentication | `ssl_verify_client on` against `ca.pem` (bundle of trusted CAs). No or untrusted certificate → 401 OperationOutcome. |
 | Authorisation | SHA-1 certificate fingerprint must be in `allowlist.map` (`<fp> <site>;`), else 403. A valid certificate alone is not enough. |
 | Identity | `X-Client-Site`, `-Cert-Fingerprint`, `-Cert-Subject` are set by nginx and overwrite client-sent values. The sidecar does not read them yet (licence gate = phase 2). |
