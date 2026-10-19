@@ -35,6 +35,7 @@ docker compose -f docker-compose.test.yml down -v
 - `test_subject`: a throwaway Patient; its QuestionnaireResponses and Observations are deleted on teardown, so repeated runs do not accumulate data.
 - Versions come from `versions.env` (`PRO_LIBRARY_VERSION`, `PCOR_MII_VERSION`) and the Dockerfile ARGs (`MII_PRO_VERSION`, `MII_PRO_RETAINED_VERSIONS`). Never hard-code them.
 - `tests/support/pro_library.py`: PHQ-9 / SF-4a QuestionnaireResponse builders shared by integration and upstream tests.
+- `ValueSet/$expand` assertions poll (up to 90 s): shortly after boot HAPI is still pre-expanding and returns empty expansions. Seen as a flaky publish smoke test on master after PR #2.
 
 ## Expected non-passes
 
