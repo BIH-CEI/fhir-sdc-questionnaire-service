@@ -7,14 +7,14 @@
 #   # put ca.pem, server.pem, server.key, allowlist.map into ./pki/
 #   docker compose up -d
 #
-# All four images come from the same build: pin FM_TAG to one sha-<short> or
-# form-manager-<version> tag rather than `latest`.
+# All four images come from the same build: FM_TAG is required and should be
+# one sha-<short> or form-manager-<version> tag, never `latest`.
 
 name: fhir-sdc-form-manager
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:15-alpine@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hapi}
@@ -30,7 +30,7 @@ services:
       retries: 10
 
   hapi:
-    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-form-manager:${FM_TAG:-latest}
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-form-manager:${FM_TAG:?set FM_TAG to one sha-<short> or form-manager-<version> tag}
     restart: unless-stopped
     depends_on:
       db: { condition: service_healthy }
@@ -61,7 +61,7 @@ services:
       retries: 20
 
   loader:
-    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-loader:${FM_TAG:-latest}
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-loader:${FM_TAG:?set FM_TAG to one sha-<short> or form-manager-<version> tag}
     restart: "no"   # one-shot; re-run with: docker compose run --rm loader
     depends_on:
       hapi: { condition: service_healthy }
@@ -70,7 +70,7 @@ services:
     networks: [backend]
 
   sidecar:
-    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-api:${FM_TAG:-latest}
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-api:${FM_TAG:?set FM_TAG to one sha-<short> or form-manager-<version> tag}
     restart: unless-stopped
     depends_on:
       hapi: { condition: service_healthy }
@@ -82,7 +82,7 @@ services:
     # healthcheck: from the image (GET /health)
 
   proxy:
-    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-proxy:${FM_TAG:-latest}
+    image: ${FM_REGISTRY:-ghcr.io/bih-cei}/fhir-sdc-proxy:${FM_TAG:?set FM_TAG to one sha-<short> or form-manager-<version> tag}
     restart: unless-stopped
     depends_on:
       hapi: { condition: service_healthy }

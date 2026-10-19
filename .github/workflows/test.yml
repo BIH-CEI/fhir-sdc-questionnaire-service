@@ -63,6 +63,12 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt -r requirements-test.txt
 
+      # Known vulnerabilities in the sidecar's dependencies fail the build.
+      - name: Dependency audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r api/requirements.txt
+
       # Fast layer first: pure-function tests + loader version ordering. No
       # Docker needed, so a logic bug fails in seconds, not after the boot.
       - name: Unit tests

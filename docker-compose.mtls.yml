@@ -10,7 +10,12 @@
 
 services:
   mtls-proxy:
-    image: nginx:1.27-alpine
+    # The real proxy image (Dockerfile.proxy: nginx + routing + guard baked in),
+    # with the TEST-ONLY PKI mounted and MTLS_ENV=test.
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    image: fhir-sdc-proxy:local
     container_name: mtls-proxy
     depends_on:
       - hapi-fhir-test
@@ -22,11 +27,6 @@ services:
       HAPI_UPSTREAM: hapi-fhir-test:8080
       SIDECAR_UPSTREAM: fastapi-test:8000
     volumes:
-      # nginx renders templates/*.template into conf.d with envsubst, but only
-      # for variables set in the environment (nginx's own $vars stay intact).
-      - ./deploy/mtls/nginx-mtls.conf:/etc/nginx/templates/default.conf.template:ro
-      - ./deploy/mtls/10-forbid-test-pki.sh:/docker-entrypoint.d/10-forbid-test-pki.sh:ro
-      - ./deploy/mtls/forbidden-test-ca.b64:/etc/nginx/forbidden-test-ca.b64:ro
       - ./deploy/mtls/test-pki/ca.pem:/etc/nginx/mtls/ca.pem:ro
       - ./deploy/mtls/test-pki/server.pem:/etc/nginx/mtls/server.pem:ro
       - ./deploy/mtls/test-pki/server.key:/etc/nginx/mtls/server.key:ro

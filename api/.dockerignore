@@ -1,0 +1,11 @@
+# Only requirements.txt and app/ are copied into the image; keep the build
+# context small and free of local secrets.
+.env
+.env.*
+tests/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
