@@ -39,7 +39,7 @@ make refresh-pcor-mii            # re-vendor PCOR-MII; make bump-pcor-mii to fol
 - **HAPI caches package bytes in the DB.** A package re-vendored under the same version does not take effect on an existing DB. Recreate it (`docker compose down -v`).
 - **`ValueSet/$expand` needs the Lucene index** (Hibernate Search, volume `hapi_lucene`). Packages ship no expansions. If DB and index diverge, run `$reindex`. Right after boot HAPI re-stores its TermValueSets and pre-expands them in the background; until then `$expand` answers 200 with an **empty** expansion. The content tests poll for up to 90 s instead of asserting once.
 - **Versions live only in `versions.env` and the Dockerfile ARGs.** Do not hard-code them in config, compose or tests.
-- **Unfiltered `Library/$evaluate` fails on CR >= 4.9.** Always pass `expression=`. See ARCHITECTURE.md "clinical-reasoning >= 4.9 Parameters-Converter".
+- **Keep passing `expression=` to `Library/$evaluate`.** The CR 4.9 converter bug is fixed since base image `v8.12.0-2`, but filtering avoids serialising whole QuestionnaireResponses. See ARCHITECTURE.md "clinical-reasoning >= 4.9 Parameters-Converter".
 - **Validation is off by design.** Do not "fix" tests by turning it on.
 - The parent `interop-prototypes/` is a container, not a repo. Run `git` and `bd` inside this directory.
 

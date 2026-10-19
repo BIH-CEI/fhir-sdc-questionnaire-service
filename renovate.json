@@ -23,6 +23,16 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "HAPI FHIR base image (tag@digest) in Dockerfile.form-manager",
+      "fileMatch": ["^Dockerfile\\.form-manager$"],
+      "matchStrings": [
+        "ARG HAPI_BASE=(?<depName>hapiproject/hapi):(?<currentValue>v[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
       "description": "PCOR-MII version pin in versions.env (vendored tgz is refreshed by auto-vendor-pcor-mii)",
       "fileMatch": ["^versions\\.env$"],
       "matchStrings": [
@@ -45,6 +55,22 @@
     }
   ],
   "packageRules": [
+    {
+      "matchPackageNames": ["hapiproject/hapi"],
+      "matchManagers": ["custom.regex"],
+      "groupName": "HAPI FHIR base image",
+      "commitMessageTopic": "HAPI FHIR base image",
+      "labels": ["renovate", "hapi"],
+      "prBodyNotes": [
+        "Check the bundled clinical-reasoning version (`cqf-fhir-cr-*.jar` in /app/main.war). The strict xfails in `api/tests/upstream/` flip when HAPI behaviour changes; update them and ARCHITECTURE.md accordingly."
+      ]
+    },
+    {
+      "description": "hapiproject/hapi is managed by the custom regex manager (tag@digest ARG); avoid duplicate PRs from the dockerfile manager",
+      "matchPackageNames": ["hapiproject/hapi"],
+      "matchManagers": ["dockerfile"],
+      "enabled": false
+    },
     {
       "matchPackageNames": ["de.medizininformatikinitiative.kerndatensatz.pros"],
       "groupName": "MII PRO IG",

@@ -30,7 +30,7 @@ All targets load `versions.env`. A bare `docker run` of the image serves termino
 | Content | Version | Pinned in | Updated by |
 |---------|---------|-----------|------------|
 | Form Manager itself | 0.2.0 | `versions.env` `FORM_MANAGER_VERSION` | Manually |
-| HAPI FHIR | 8.12.0 (digest) | `Dockerfile.form-manager` `HAPI_BASE` | Manually |
+| HAPI FHIR | 8.12.0 (image `v8.12.0-2`, cqf-fhir-cr 4.13.0; tag + digest) | `Dockerfile.form-manager` `HAPI_BASE` | Renovate (custom regex manager) |
 | SDC `hl7.fhir.uv.sdc` | 4.0.0 | Dockerfile ARGs `SDC_VERSION` / `SDC_SHA256` | Manually (Renovate disabled) |
 | MII PRO `de.medizininformatikinitiative.kerndatensatz.pros` | 2027.0.0-ballot.1 (ballot) | Dockerfile ARGs `MII_PRO_VERSION` / `MII_PRO_SHA256` | Renovate; `auto-pin-pro-sha.yml` re-pins the SHA |
 | PRO Library `bih-cei.fhir.pro-library` | 0.1.4 | `versions.env` + vendored tgz in `local-packages/` | Manually |
@@ -81,7 +81,7 @@ Fine for demos and internal staging. **Not production-ready:**
   - Effect: the Questionnaires and terminology load fine. The consumer IG sync reads the resource list from the vendored package instead.
 - **HAPI caches package bytes in the DB.** An existing database keeps its old copy of a package re-vendored under the same version (e.g. PCOR-MII 0.3.0 from before the draft→active patch). Recreate the DB (`docker compose down -v`) or remove the package.
 - **Validation is off.** HAPI accepts structurally invalid resources. Validate at publication time, e.g. with the HL7 validator CLI.
-- **clinical-reasoning >= 4.9:** unfiltered `Library/$evaluate` fails on resource-valued defines. The sidecar works around it by requesting scalar defines only. Details are in [ARCHITECTURE.md](ARCHITECTURE.md#clinical-reasoning--49-parameters-converter).
+- **HAPI's native `$package` crashes** on almost all MII PRO / PCOR-MII Questionnaires (NPE in cqf-fhir-cr up to 4.13.0); the sidecar's CRMI-conformant `$package` is used instead.
 
 ## Documentation
 

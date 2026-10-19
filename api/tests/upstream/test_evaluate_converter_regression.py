@@ -9,18 +9,19 @@ eine Ressource mit Backbone-Kindern liefert — bei uns `MostRecentResponse`
 
     Could not resolve inner FHIR type: QuestionnaireResponseItemAnswerComponent
 
-Die CQL-AUSWERTUNG ist intakt; nur die Rueckkonvertierung des Ergebnisses in
-die Parameters-Ressource bricht. Drei Tests sichern das in beide Richtungen:
+Die CQL-AUSWERTUNG war intakt; nur die Rueckkonvertierung des Ergebnisses in
+die Parameters-Ressource brach. Upstream behoben in clinical-reasoning 4.12.0
+(PR #1089); seit dem HAPI-Basisimage v8.12.0-2 (cqf-fhir-cr 4.13.0) ist der
+Fix im Image. Der Stolperdraht hat am 2026-10-19 wie vorgesehen ausgeloest.
 
 1. Der Sidecar-Workaround (expression= nur fuer die benoetigten Defines)
-   haelt: $compute-and-extract funktioniert, OBWOHL die Library ein
-   converter-brechendes oeffentliches Define traegt.
+   haelt: $compute-and-extract funktioniert, obwohl die Library ein
+   resource-wertiges oeffentliches Define traegt. Bleibt bewusst bestehen
+   (spart die Serialisierung der kompletten QuestionnaireResponse).
 2. Der gefilterte $evaluate liefert die angeforderten Skalar-Defines korrekt.
-3. STOLPERDRAHT (strict xfail): Der UNgefilterte $evaluate ist als
-   known-failing markiert. Fixt Upstream den Converter, kippt der Test auf
-   XPASS und schlaegt wegen strict=True FEHL — das ist Absicht: Dann sind
-   ARCHITECTURE.md zu aktualisieren, der expression-Filter wird optional,
-   und die private-define-Hygiene (pro-library 0.2.0) ist neu zu bewerten.
+3. Regression: Der UNgefilterte $evaluate funktioniert (vorher strict-xfail-
+   Stolperdraht). Faellt er wieder, ist der Converter-Bug zurueck — z.B. durch
+   ein Downgrade des HAPI-Basisimages.
 """
 import pytest
 
@@ -86,21 +87,11 @@ async def test_filtered_evaluate_returns_requested_scalar_defines(fhir_server, t
     assert named["PROMISDepressionTScore"].get("valueDecimal") == 37.4
 
 
-@pytest.mark.xfail(
-    reason=(
-        "clinical-reasoning >= 4.9 (HAPI >= 8.12): CqlFhirParametersConverter "
-        "kann resource-wertige Defines mit Backbone-Kindern (MostRecentResponse) "
-        "nicht in Parameters konvertieren — siehe ARCHITECTURE.md. "
-        "XPASS heisst: Upstream hat gefixt -> ARCHITECTURE.md aktualisieren, "
-        "expression-Filter-Zwang und private-define-Hygiene neu bewerten."
-    ),
-    strict=True,
-)
-async def test_unfiltered_evaluate_upstream_tripwire(fhir_server, test_subject):
-    """Stolperdraht: UNgefilterter $evaluate inkl. des resource-wertigen
-    Defines. Erwartet heute den Converter-Fehler (xfail)."""
+async def test_unfiltered_evaluate_works(fhir_server, test_subject):
+    """UNgefilterter $evaluate inkl. des resource-wertigen Defines
+    `MostRecentResponse`: seit cqf-fhir-cr >= 4.12 ohne Converter-Fehler."""
     await post_qr(fhir_server, phq9_qr(test_subject, raw=5))
 
     params = await _evaluate(fhir_server, test_subject, expressions=None)
-    assert not _has_converter_error(params), f"Converter-Fehler (erwartet auf CR >= 4.9): {params}"
+    assert not _has_converter_error(params), f"Converter-Fehler zurueck (CR < 4.12 im Image?): {params}"
     assert _by_name(params).get("PHQ9TotalScore", {}).get("valueInteger") == 5

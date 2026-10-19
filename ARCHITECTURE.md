@@ -23,7 +23,7 @@ HAPI is the Form Manager. It stores and serves all content and runs `$populate`,
    - Applies the **draft→active patch** to SDC and PCOR-MII. For SD, CS, VS, SearchParameter, OperationDefinition, CapabilityStatement, StructureMap, ImplementationGuide and ConceptMap, a top-level `status: draft` is set to `active` and the package is re-packed.
    - Why the patch: HAPI's package installer skips draft resources. SDC 3.0.0 shipped everything as draft (4.0.0: 8 SDs), and PCOR-MII ships all its terminology as draft. Without the patch, the PCOR answerValueSets would not resolve.
    - MII PRO is used unchanged.
-2. **Runtime stage.** Based on `hapiproject/hapi@sha256:…` (v8.12.0-1, distroless).
+2. **Runtime stage.** Based on `hapiproject/hapi:v8.12.0-2@sha256:…` (distroless, bundles cqf-fhir-cr 4.13.0; tag and digest are both pinned so Renovate can propose updates).
    - Packages go to `/data/hapi/local-packages/`, including the vendored PRO Library tgz.
    - `hapi-config/application.yaml` goes to `/data/hapi/`.
    - `/data/hapi/lucene` is created empty and owned by the non-root user.
@@ -89,15 +89,14 @@ A new instrument needs only new content, no code change.
 
 ## clinical-reasoning >= 4.9 Parameters-Converter
 
-HAPI 8.12 bundles cqf-fhir-cr 4.9.0 / CQL engine 5.0.0. `Library/$evaluate` **without** an `expression` filter fails as soon as a public define returns a resource with backbone children. Here that is `MostRecentResponse`, a whole QuestionnaireResponse:
+**Fixed since base image `v8.12.0-2`** (cqf-fhir-cr 4.13.0); kept here because the sidecar's design follows from it. With `v8.12.0-1` (cqf-fhir-cr 4.9.0 / CQL engine 5.0.0), `Library/$evaluate` **without** an `expression` filter failed as soon as a public define returned a resource with backbone children. Here that is `MostRecentResponse`, a whole QuestionnaireResponse:
 
     Could not resolve inner FHIR type: QuestionnaireResponseItemAnswerComponent
 
 The failure is in converting the result back into `Parameters` (`CqlFhirParametersConverter`), not in CQL evaluation. The same call with `?expression=PHQ9TotalScore&expression=…` returns correct values.
 
 - **Workaround (implemented):** the sidecar requests only the defines named by the extract-flagged items' `calculatedExpression`. Keep this even after the upstream fix, because it also avoids serialising the whole QuestionnaireResponse per call.
-- **Upstream:** fixed in clinical-reasoning 4.12.0 (PR #1089). It arrives with the first HAPI release that bundles CR >= 4.12.
-- **Tripwire:** `test_unfiltered_evaluate_upstream_tripwire` is a strict xfail and fails loudly on the first image with a fixed converter. Update this section then.
+- **Upstream:** fixed in clinical-reasoning 4.12.0 (PR #1089), in the image since `v8.12.0-2`. The strict-xfail tripwire fired as designed (2026-10-19) and is now the regression test `test_unfiltered_evaluate_works`: it fails if a base-image change brings the bug back.
 - **PRO Library hygiene:** declare helper defines such as `MostRecentResponse` as `private define`.
 
 ## Consumer test network (`docker-compose.consumer-test.yml`)
