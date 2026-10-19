@@ -59,7 +59,7 @@ test-unit:
 # mTLS front door on top of the test stack (run test-stack first). Uses the
 # committed TEST-ONLY PKI; see deploy/mtls/.
 test-mtls:
-	docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml up -d mtls-proxy
+	docker compose -f docker-compose.test.yml -f docker-compose.mtls.yml up -d --no-deps mtls-proxy
 	until curl -sk https://localhost:8443/ -o /dev/null; do sleep 2; done
 	scripts/test-mtls.sh
 
