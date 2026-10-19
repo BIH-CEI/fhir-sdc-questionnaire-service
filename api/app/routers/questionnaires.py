@@ -553,24 +553,9 @@ async def localize_questionnaire_by_url(
     ```
     """
     try:
-        # Search for Questionnaire
-        search_params = {"url": url}
-        if version:
-            search_params["version"] = version
-        else:
-            search_params["status"] = "active"
-            search_params["_sort"] = "-_lastUpdated"
-            search_params["_count"] = "1"
-
-        search_result = await package_service.fetch_resource(
-            "/Questionnaire",
-            params=search_params
-        )
-
-        if not search_result or search_result.get("total", 0) == 0:
+        questionnaire = await package_service.find_canonical("Questionnaire", url, version)
+        if not questionnaire:
             raise ValueError(f"Questionnaire with url '{url}' not found")
-
-        questionnaire = search_result["entry"][0]["resource"]
 
         # Localize to target language
         localized = localization_service.localize(questionnaire, language)

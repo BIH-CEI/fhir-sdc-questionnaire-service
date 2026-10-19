@@ -21,7 +21,7 @@ HAPI is the Form Manager. It stores and serves all content and runs `$populate`,
    - Downloads MII PRO and SDC from `packages.simplifier.net` and verifies their SHA-256.
    - Copies the vendored `local-packages/pcor-mii-${PCOR_MII_VERSION}.tgz`.
    - Applies the **draft→active patch** to SDC and PCOR-MII. For SD, CS, VS, SearchParameter, OperationDefinition, CapabilityStatement, StructureMap, ImplementationGuide and ConceptMap, a top-level `status: draft` is set to `active` and the package is re-packed.
-   - Why the patch: HAPI's package installer skips draft resources. SDC 3.0.0 ships everything as draft, and PCOR-MII ships all its terminology as draft. Without the patch, the PCOR answerValueSets would not resolve.
+   - Why the patch: HAPI's package installer skips draft resources. SDC 3.0.0 shipped everything as draft (4.0.0: 8 SDs), and PCOR-MII ships all its terminology as draft. Without the patch, the PCOR answerValueSets would not resolve.
    - MII PRO is used unchanged.
 2. **Runtime stage.** Based on `hapiproject/hapi@sha256:…` (v8.12.0-1, distroless).
    - Packages go to `/data/hapi/local-packages/`, including the vendored PRO Library tgz.
@@ -45,11 +45,12 @@ ISiK and the Simplifier MII PRO ballot entries are commented out. ISiK fails sna
 
 ## Boot sequence
 
-1. **Package installer.** HAPI installs only the canonical types from the packages: NamingSystem, CodeSystem, ValueSet, StructureDefinition, ConceptMap, SearchParameter, Subscription.
+1. **Package installer.** HAPI installs only the canonical types from the packages: NamingSystem, CodeSystem, ValueSet, StructureDefinition, ConceptMap, SearchParameter, Subscription. It keys them on canonical **and** version, so several versions of one package coexist. `application.yaml` lists the current MII PRO version plus one entry per retained version, rendered at image build time by `hapi-scripts/render-application-yaml.py` from the `MII_PRO_RETAINED_VERSIONS` build-arg.
 2. **Instance loader.** `hapi-scripts/load-instance-resources.sh` waits for `/metadata`, then PUTs the types the installer skips: Questionnaire, Library (incl. the CRMI release manifest), Provenance, ImplementationGuide, ObservationDefinition, TestScript.
-   - The image is distroless, so the loader runs outside it. In compose it is the `pro-library-loader` service (alpine, mounts `./local-packages`). In CI it runs on the runner.
-   - **Version retention:** only the newest version per package is loaded, and it keeps the package's resource ids. Older tarballs are skipped unless `RETAIN_PRIOR_VERSIONS=1`. With that flag they are created by conditional update on `(url, version)` and do not overwrite current ids.
-3. **Dependency installer (compose only).** `mii-pro-installer` runs `scripts/install-mii-pro.py`, which installs `hl7.fhir.r4.core` 4.0.1, `hl7.terminology` 6.4.0, SDC 3.0.0 and MII meta 2026.0.0 via `$install-package`. This step needs registry access.
+   - The image is distroless, so the loader runs outside it. In compose it is the `pro-library-loader` service (alpine, mounts `./local-packages`). In CI and `make test-stack` it runs on the host over the image's own package dir (`docker cp` out of the container), never over the repo's `local-packages/`, which also holds stale tarballs.
+   - **Version retention (Option A, 2026-10-19).** Older MII PRO versions are first-class content so QuestionnaireResponses pinned to `questionnaire|<old version>` keep resolving. The newest version per package (proper ordering: `2027.0.0` > `2027.0.0-ballot.1` > `2026.7.0`) is loaded by id and keeps the package ids. An older tarball is loaded only if declared in `RETAINED_PACKAGE_VERSIONS` (`<package>@<version>`, derived from `MII_PRO_RETAINED_VERSIONS`), because only then are its profiles and ValueSets installed too. Retained Questionnaires and Libraries are created by conditional update on `(url, version)` with the id stripped. ObservationDefinition (no canonical in R4) and Provenance cannot be versioned that way and are not loaded for retained versions: the current version's copy wins, so interpretation bands always come from the newest package.
+   - The sidecar resolves an unversioned canonical to the **highest active version**, not the last written one, and resolves the unversioned `answerValueSet` references inside a Questionnaire to **that Questionnaire's own version** of the ValueSet (`PackageService.find_canonical` / `pick_version`). MII PRO pins none of its roughly 250 ValueSet references, so without this an old form would show the newest answer lists.
+3. **Dependency installer (compose only).** `mii-pro-installer` runs `scripts/install-mii-pro.py`, which installs `hl7.fhir.r4.core` 4.0.1, `hl7.terminology` 6.4.0, SDC 4.0.0 and MII meta 2027.0.0-ballot via `$install-package`. This step needs registry access.
 
 There is no HAPI healthcheck (no curl in a distroless image). Ordering relies on `depends_on`, the loader's `/metadata` polling, and a `sleep 30` before FastAPI starts.
 
@@ -123,7 +124,7 @@ Other compose files:
 
 | Workflow | Does |
 |----------|------|
-| `test.yml` | Builds the image, starts the test stack, copies the packages out of the container, runs the loader, runs pytest with coverage. The Codecov upload is non-blocking. |
+| `test.yml` | Unit layer first (no Docker), then: image build, test stack, loader over the image's package set, pytest `integration` + `content` + `upstream` with the sidecar in-process and a 75 % coverage gate. See [TESTING.md](TESTING.md). |
 | `build-and-publish.yml` | Builds and smoke-tests the image, then pushes multi-arch to GHCR on the default branch and on `v*` tags. Smoke checks: ≥ 20 MII PRO SDs; PRO Library PHQ-9 + manifest; PCOR `UKHDEDP` + `pcor-item-dictionary`; `$expand`. |
 | `auto-pin-pro-sha.yml` | On Renovate PRs that touch the Dockerfile: recomputes and commits `MII_PRO_SHA256` |
 | `auto-vendor-pcor-mii.yml` | On Renovate PRs that touch `versions.env`: runs `scripts/refresh-pcor-mii.sh` and commits the tgz |

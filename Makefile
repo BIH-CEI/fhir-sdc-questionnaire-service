@@ -13,7 +13,15 @@
 include versions.env
 export
 
-.PHONY: up build down logs ps test test-stack consumer-up consumer-down consumer-logs consumer-resync refresh-pcor-mii bump-pcor-mii
+# Upstream MII PRO pins live only in Dockerfile.form-manager (Renovate bumps
+# them). Derived here for the loader: retained versions are declared as
+# "<package>@<version>" so older tarballs are loaded only when their
+# terminology is installed too.
+MII_PRO_RETAINED_VERSIONS := $(shell sed -nE 's/^ARG MII_PRO_RETAINED_VERSIONS="?([^"]*)"?$$/\1/p' Dockerfile.form-manager)
+RETAINED_PACKAGE_VERSIONS := $(foreach v,$(MII_PRO_RETAINED_VERSIONS),de.medizininformatikinitiative.kerndatensatz.pros@$(v))
+export RETAINED_PACKAGE_VERSIONS
+
+.PHONY: up build down logs ps test test-unit test-stack consumer-up consumer-down consumer-logs consumer-resync refresh-pcor-mii bump-pcor-mii
 
 up:
 	docker compose up -d
@@ -33,16 +41,23 @@ ps:
 # Same sequence as CI (test.yml): boot, then PUT the resource types HAPI's
 # installer skips. MII PRO + SDC tarballs only exist inside the image, so they
 # are copied out next to the vendored ones before the loader runs.
+# The image's own package dir is the declared content set (current + retained
+# MII PRO, SDC, PCOR-MII, PRO Library) — copy it out, never mix in the repo's
+# local-packages/ (which also holds stale tarballs).
 test-stack:
 	docker compose -f docker-compose.test.yml up -d --build
 	until curl -sf http://localhost:8081/fhir/metadata -o /dev/null; do sleep 3; done
-	mkdir -p local-packages-merged
-	cp -f local-packages/*.tgz local-packages-merged/
-	docker cp hapi-fhir-test:/data/hapi/local-packages/. local-packages-merged/
-	HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages-merged ./hapi-scripts/load-instance-resources.sh
+	rm -rf local-packages-image && mkdir -p local-packages-image
+	docker cp hapi-fhir-test:/data/hapi/local-packages/. local-packages-image/
+	HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages-image \
+	  RETAINED_PACKAGE_VERSIONS="$(RETAINED_PACKAGE_VERSIONS)" ./hapi-scripts/load-instance-resources.sh
+
+test-unit:
+	cd api && python3 -m pytest tests/unit -q
+	bash hapi-scripts/test-loader-version-order.sh
 
 test:
-	cd api && python3 -m pytest tests/sdc_compliance/ tests/integration/ -v --tb=short
+	cd api && python3 -m pytest tests/integration/ tests/content/ tests/upstream/ -v --tb=short
 
 # Downstream consumer test network: producer Form Manager + a separate
 # CR-enabled HAPI that re-receives the SDC + MII PRO + PRO Library + PCOR-MII content,

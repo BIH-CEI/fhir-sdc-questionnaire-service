@@ -1,0 +1,251 @@
+"""
+SDC $package — sidecar implementation (PackageService), end to end.
+
+SDC Form Manager CapabilityStatement:
+https://build.fhir.org/ig/HL7/sdc/CapabilityStatement-sdc-form-manager.html
+
+"The Form Manager SHALL support the $package operation on Questionnaire
+resources to return a Bundle containing the Questionnaire and all referenced
+dependencies including ValueSets, CodeSystems, Libraries, and StructureMaps."
+
+DATA STRATEGY
+-------------
+Tests anchor on real MII PRO content by canonical URL via the
+`pro_questionnaires` fixture (conftest.py). The chain exercised for
+transitive dependencies:
+
+    Questionnaire mii-qst-pro-eortc-qlq-c30
+      → ValueSet mii-vs-pro-eortc-qlq-c30-scale-4pt
+      → ValueSet mii-vs-pro-eortc-qlq-c30-scale-7pt
+        → CodeSystem mii-cs-pro-eortc-qlq-c30 (shared by both VS)
+
+Synthetic fixtures are used only for what MII PRO does not exercise:
+missing dependencies, circular references, Library references, contained
+ValueSets, deep chains. HAPI's own (partial) $package is documented in
+tests/upstream/test_hapi_native_package.py.
+"""
+import pytest
+
+from tests.conftest import MII_PRO_BASE
+from tests.fixtures.sample_resources import (
+    QUESTIONNAIRE_WITH_LIBRARY,
+    QUESTIONNAIRE_WITH_MISSING_VALUESET,
+    SAMPLE_LIBRARY,
+    SIMPLE_TEXT_QUESTIONNAIRE,
+)
+
+pytestmark = [pytest.mark.sdc_compliance, pytest.mark.integration, pytest.mark.asyncio]
+
+QLQ_C30_VS_4PT = f"{MII_PRO_BASE}/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-4pt"
+QLQ_C30_VS_7PT = f"{MII_PRO_BASE}/ValueSet/mii-vs-pro-eortc-qlq-c30-scale-7pt"
+QLQ_C30_CS = f"{MII_PRO_BASE}/CodeSystem/mii-cs-pro-eortc-qlq-c30"
+
+
+def _of_type(bundle: dict, rtype: str) -> list:
+    return [e["resource"] for e in bundle["entry"] if e["resource"]["resourceType"] == rtype]
+
+
+class TestSDCPackageOperationCompliance:
+
+    async def test_package_returns_collection_bundle(self, api_client, pro_questionnaires):
+        """SDC: $package SHALL return Bundle with type='collection'."""
+        response = await api_client.get(f"/api/questionnaires/{pro_questionnaires['phq_9']['id']}/$package")
+
+        assert response.status_code == 200
+        bundle = response.json()
+        assert bundle["resourceType"] == "Bundle"
+        assert bundle["type"] == "collection"
+        assert "timestamp" in bundle
+        assert len(bundle["entry"]) >= 1
+
+    async def test_questionnaire_is_first_entry(self, api_client, pro_questionnaires):
+        """SDC: Questionnaire SHOULD be the first entry."""
+        phq9 = pro_questionnaires["phq_9"]
+        bundle = (await api_client.get(f"/api/questionnaires/{phq9['id']}/$package")).json()
+
+        first = bundle["entry"][0]["resource"]
+        assert first["resourceType"] == "Questionnaire"
+        assert first["id"] == phq9["id"]
+        assert first["url"] == phq9["url"]
+
+    async def test_includes_referenced_valuesets_from_nested_items(self, api_client, pro_questionnaires):
+        """SDC: SHALL include all referenced ValueSets, also from nested items.
+
+        QLQ-C30 carries its answerValueSet bindings on items nested inside
+        subscale groups — a top-level-only walk would miss both."""
+        q = pro_questionnaires["qlq_c30"]
+        bundle = (await api_client.get(f"/api/questionnaires/{q['id']}/$package")).json()
+
+        urls = {vs.get("url") for vs in _of_type(bundle, "ValueSet")}
+        assert {QLQ_C30_VS_4PT, QLQ_C30_VS_7PT} <= urls, f"got {urls}"
+        # Version-aware resolution: the VS must belong to the same MII PRO
+        # version as the Questionnaire.
+        assert {vs.get("version") for vs in _of_type(bundle, "ValueSet")} == {q["version"]}
+
+    async def test_includes_referenced_codesystems_once(self, api_client, pro_questionnaires):
+        """SDC: SHALL include CodeSystems referenced by ValueSets (transitive),
+        de-duplicated — both VS bind the same CS."""
+        q_id = pro_questionnaires["qlq_c30"]["id"]
+        bundle = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
+
+        cs_urls = [cs.get("url") for cs in _of_type(bundle, "CodeSystem")]
+        assert cs_urls.count(QLQ_C30_CS) == 1, f"CodeSystem count: {cs_urls}"
+
+    async def test_missing_dependency_returns_operation_outcome_warning(self, api_client, clean_questionnaire):
+        """SDC: missing dependencies SHALL produce an OperationOutcome with severity=warning."""
+        q_id = await clean_questionnaire(QUESTIONNAIRE_WITH_MISSING_VALUESET)
+
+        response = await api_client.get(f"/api/questionnaires/{q_id}/$package")
+        assert response.status_code == 200
+
+        outcomes = _of_type(response.json(), "OperationOutcome")
+        assert len(outcomes) == 1
+        issue = outcomes[0]["issue"][0]
+        assert issue["severity"] == "warning"
+        assert issue["code"] == "not-found"
+        assert "DOES_NOT_EXIST" in issue["diagnostics"]
+
+    async def test_include_dependencies_false_returns_questionnaire_only(self, api_client, pro_questionnaires):
+        """SDC: SHALL support the include-dependencies parameter."""
+        q_id = pro_questionnaires["qlq_c30"]["id"]
+        with_deps = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
+        without = (await api_client.get(
+            f"/api/questionnaires/{q_id}/$package", params={"include-dependencies": False}
+        )).json()
+
+        assert len(with_deps["entry"]) > 1
+        assert len(without["entry"]) == 1
+        assert without["entry"][0]["resource"]["resourceType"] == "Questionnaire"
+
+    async def test_type_level_post_does_not_persist(self, api_client, fhir_server):
+        """SDC: SHALL support type-level POST; the body Questionnaire is not stored."""
+        q = {**SIMPLE_TEXT_QUESTIONNAIRE, "url": "http://example.org/Questionnaire/package-post-probe"}
+        response = await api_client.post("/api/questionnaires/$package", json=q)
+
+        assert response.status_code == 200
+        bundle = response.json()
+        assert bundle["type"] == "collection"
+        assert bundle["entry"][0]["resource"]["title"] == q["title"]
+        stored = await fhir_server.get("/Questionnaire", params={"url": q["url"], "_summary": "count"})
+        assert stored.json().get("total", 0) == 0
+
+    async def test_canonical_url_resolution(self, api_client, pro_questionnaires):
+        """SDC: SHALL support resolution by canonical URL, with and without version."""
+        phq9 = pro_questionnaires["phq_9"]
+
+        unversioned = await api_client.get("/api/questionnaires/$package", params={"url": phq9["url"]})
+        assert unversioned.status_code == 200
+        assert unversioned.json()["entry"][0]["resource"]["url"] == phq9["url"]
+
+        versioned = await api_client.get(
+            "/api/questionnaires/$package", params={"url": phq9["url"], "version": phq9["version"]}
+        )
+        assert versioned.status_code == 200
+        assert versioned.json()["entry"][0]["resource"]["version"] == phq9["version"]
+
+    async def test_unknown_version_returns_404(self, api_client, pro_questionnaires):
+        response = await api_client.get(
+            "/api/questionnaires/$package",
+            params={"url": pro_questionnaires["phq_9"]["url"], "version": "0.0.0-nope"},
+        )
+        assert response.status_code == 404
+
+    async def test_questionnaire_without_bindings_has_no_valuesets(self, api_client, pro_questionnaires):
+        """PHQ-9 uses inline answerOption only — nothing to traverse."""
+        bundle = (await api_client.get(f"/api/questionnaires/{pro_questionnaires['phq_9']['id']}/$package")).json()
+        assert _of_type(bundle, "ValueSet") == []
+        assert _of_type(bundle, "OperationOutcome") == []
+
+    async def test_bundle_has_sdc_package_tag(self, api_client, pro_questionnaires):
+        bundle = (await api_client.get(f"/api/questionnaires/{pro_questionnaires['phq_9']['id']}/$package")).json()
+        codes = [t.get("code") for t in bundle["meta"]["tag"]]
+        assert "questionnaire-package" in codes
+
+    async def test_questionnaire_not_found_returns_404(self, api_client):
+        response = await api_client.get("/api/questionnaires/NONEXISTENT_ID_12345/$package")
+        assert response.status_code == 404
+
+    async def test_invalid_resource_type_returns_422(self, api_client):
+        response = await api_client.post("/api/questionnaires/$package", json={"resourceType": "Patient"})
+        assert response.status_code == 422
+
+
+class TestDependencyResolution:
+    """Scenarios MII PRO content does not exercise — constructed inline."""
+
+    async def test_includes_library_references(self, api_client, clean_library, clean_questionnaire):
+        """SDC: SHALL include Libraries referenced via cqf-library (versioned canonical)."""
+        await clean_library(SAMPLE_LIBRARY)
+        q_id = await clean_questionnaire(QUESTIONNAIRE_WITH_LIBRARY)
+
+        bundle = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
+
+        libraries = _of_type(bundle, "Library")
+        assert [lib["url"] for lib in libraries] == [SAMPLE_LIBRARY["url"]]
+        assert _of_type(bundle, "OperationOutcome") == []
+
+    async def test_contained_valueset_is_not_resolved_externally(self, api_client, clean_questionnaire):
+        """A `#fragment` answerValueSet is a contained resource; the packager
+        must neither look it up on the server nor warn about it."""
+        q = {
+            "resourceType": "Questionnaire",
+            "status": "active",
+            "title": "Contained VS",
+            "contained": [{
+                "resourceType": "ValueSet", "id": "yesno", "status": "active",
+                "compose": {"include": [{"system": "http://example.org/CodeSystem/yesno",
+                                         "concept": [{"code": "y"}, {"code": "n"}]}]},
+            }],
+            "item": [{"linkId": "1", "type": "choice", "text": "Q", "answerValueSet": "#yesno"}],
+        }
+        q_id = await clean_questionnaire(q)
+
+        bundle = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
+
+        assert len(bundle["entry"]) == 1
+        assert bundle["entry"][0]["resource"]["contained"][0]["id"] == "yesno"
+
+    async def test_circular_valueset_includes_handled(self, api_client, clean_questionnaire, clean_valueset):
+        """SDC: SHOULD handle circular references — each resource once, no hang."""
+        vs1 = {"resourceType": "ValueSet", "url": "http://example.org/ValueSet/circular-vs-1",
+               "version": "1.0.0", "status": "active", "name": "CircularValueSet1",
+               "compose": {"include": [{"system": "http://loinc.org", "concept": [{"code": "1234-5"}]},
+                                       {"valueSet": ["http://example.org/ValueSet/circular-vs-2"]}]}}
+        vs2 = {"resourceType": "ValueSet", "url": "http://example.org/ValueSet/circular-vs-2",
+               "version": "1.0.0", "status": "active", "name": "CircularValueSet2",
+               "compose": {"include": [{"system": "http://snomed.info/sct", "concept": [{"code": "9876-5"}]},
+                                       {"valueSet": ["http://example.org/ValueSet/circular-vs-1"]}]}}
+        await clean_valueset(vs1)
+        await clean_valueset(vs2)
+        q_id = await clean_questionnaire({
+            "resourceType": "Questionnaire", "status": "active", "title": "Circular",
+            "item": [{"linkId": "1", "type": "choice", "text": "Q", "answerValueSet": vs1["url"]}],
+        })
+
+        response = await api_client.get(f"/api/questionnaires/{q_id}/$package", timeout=10.0)
+
+        assert response.status_code == 200
+        urls = [vs["url"] for vs in _of_type(response.json(), "ValueSet")]
+        assert urls == [vs1["url"]]
+        # LOINC / SNOMED CodeSystems are external: absent and not warned about.
+        assert _of_type(response.json(), "CodeSystem") == []
+        assert _of_type(response.json(), "OperationOutcome") == []
+
+    async def test_deep_nested_dependencies(self, api_client, clean_questionnaire, clean_valueset, clean_codesystem):
+        """Questionnaire → ValueSet → CodeSystem chain fully resolved."""
+        await clean_codesystem({"resourceType": "CodeSystem", "url": "http://example.org/CodeSystem/deep-nested",
+                                "version": "1.0.0", "status": "active", "content": "complete",
+                                "concept": [{"code": "code1"}, {"code": "code2"}]})
+        await clean_valueset({"resourceType": "ValueSet", "url": "http://example.org/ValueSet/deep-nested",
+                              "version": "1.0.0", "status": "active",
+                              "compose": {"include": [{"system": "http://example.org/CodeSystem/deep-nested"}]}})
+        q_id = await clean_questionnaire({
+            "resourceType": "Questionnaire", "status": "active", "title": "Deep",
+            "item": [{"linkId": "1", "type": "choice", "text": "Q",
+                      "answerValueSet": "http://example.org/ValueSet/deep-nested"}],
+        })
+
+        bundle = (await api_client.get(f"/api/questionnaires/{q_id}/$package")).json()
+
+        assert [e["resource"]["resourceType"] for e in bundle["entry"]] == ["Questionnaire", "ValueSet", "CodeSystem"]
+        assert bundle["entry"][2]["resource"]["url"] == "http://example.org/CodeSystem/deep-nested"

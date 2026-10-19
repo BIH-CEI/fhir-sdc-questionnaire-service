@@ -1,12 +1,26 @@
-"""Pytest configuration and shared fixtures."""
-import pytest
+"""Pytest configuration and shared fixtures.
+
+Two targets:
+
+- ``fhir_server``: the HAPI Form Manager image (Docker), reached over HTTP.
+  ``FHIR_BASE_URL`` (default ``http://localhost:8081/fhir``) or ``--fhir-url``.
+- ``api_client``: the FastAPI sidecar. By default the app is imported and
+  driven **in-process** through httpx's ASGI transport, talking to the same
+  HAPI. That is what makes ``--cov=app`` measure anything. Set
+  ``API_BASE_URL`` to target a running sidecar over HTTP instead (black-box
+  mode, no coverage).
+
+Unit tests (``tests/unit``) need neither target.
+"""
 import asyncio
-import httpx
 import time
 import logging
 import os
 import uuid
-from typing import Dict, Any
+from typing import Any, Dict
+
+import httpx
+import pytest
 
 logger = logging.getLogger(__name__)
 
@@ -22,426 +36,270 @@ def generate_unique_id() -> str:
 
 def make_unique_url(base_url: str) -> str:
     """Add unique suffix to URL to prevent collisions."""
-    unique_id = generate_unique_id()
-    return f"{base_url}-{unique_id}"
+    return f"{base_url}-{generate_unique_id()}"
 
 
 # ============================================================================
-# FHIR Server Configuration
+# Targets
 # ============================================================================
 
-# Server profiles with known behavior differences
-SERVER_PROFILES = {
-    "hapi": {
-        "name": "HAPI FHIR",
-        "base_url": os.getenv("FHIR_BASE_URL", "http://localhost:8081/fhir"),
-        "validation_strict": False,  # HAPI is lenient with validation
-        "supports_xml": True,
-        "supports_graphql": False,
-        "metadata_path": "/metadata",
-        "startup_timeout": 120,  # seconds
-    },
-    "aidbox": {
-        "name": "Aidbox",
-        "base_url": "http://localhost:8888/fhir",  # Aidbox FHIR endpoint
-        "validation_strict": True,  # Aidbox validates strictly
-        "supports_xml": True,
-        "supports_graphql": True,
-        "metadata_path": "/metadata",
-        "startup_timeout": 60,
-    },
-    "azure": {
-        "name": "Azure Health Data Services",
-        "base_url": os.getenv("AZURE_FHIR_URL", "https://your-fhir.azurehealthcareapis.com"),
-        "validation_strict": True,
-        "supports_xml": True,
-        "supports_graphql": False,
-        "metadata_path": "/metadata",
-        "requires_auth": True,
-        "startup_timeout": 30,
-    },
-    "firely": {
-        "name": "Firely Server",
-        "base_url": "http://localhost:4080",
-        "validation_strict": True,
-        "supports_xml": True,
-        "supports_graphql": False,
-        "metadata_path": "/metadata",
-        "startup_timeout": 60,
-    },
-    "smile": {
-        "name": "Smile CDR",
-        "base_url": "https://try.smilecdr.com:8000/baseR4",
-        "validation_strict": True,
-        "supports_xml": True,
-        "supports_graphql": False,
-        "metadata_path": "/metadata",
-        "startup_timeout": 30,
-        "is_public_server": True,  # Don't create/delete resources on public server
-        "read_only_mode": True,  # Only run read/search tests
-    },
-}
+DEFAULT_FHIR_BASE_URL = os.getenv("FHIR_BASE_URL", "http://localhost:8081/fhir")
+HAPI_STARTUP_TIMEOUT = 120  # seconds
 
-# Default server
-DEFAULT_FHIR_SERVER = "hapi"
-
-# FastAPI proxy URL (stays the same regardless of FHIR server)
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8001")
+# Set → black-box mode against a running sidecar. Unset → in-process ASGI.
+API_BASE_URL = os.getenv("API_BASE_URL")
+# The containerized sidecar's host port in docker-compose.test.yml. Only
+# used by the container smoke test.
+SIDECAR_CONTAINER_URL = os.getenv("SIDECAR_CONTAINER_URL", "http://localhost:8001")
 
 
 def pytest_addoption(parser):
-    """Add custom pytest command line options."""
-    parser.addoption(
-        "--fhir-server",
-        action="store",
-        default=DEFAULT_FHIR_SERVER,
-        help=f"FHIR server to test against. Options: {', '.join(SERVER_PROFILES.keys())}. "
-             f"Default: {DEFAULT_FHIR_SERVER}"
-    )
     parser.addoption(
         "--fhir-url",
         action="store",
         default=None,
-        help="Override FHIR server base URL (e.g., http://custom-server:8080/fhir)"
+        help="Override FHIR server base URL (default: $FHIR_BASE_URL or "
+             f"{DEFAULT_FHIR_BASE_URL})",
     )
 
 
 @pytest.fixture(scope="session")
-def fhir_server_config(request):
-    """Get FHIR server configuration based on CLI options."""
-    server_name = request.config.getoption("--fhir-server")
-    custom_url = request.config.getoption("--fhir-url")
-
-    if server_name not in SERVER_PROFILES:
-        pytest.exit(
-            f"Unknown FHIR server: {server_name}. "
-            f"Available: {', '.join(SERVER_PROFILES.keys())}"
-        )
-
-    config = SERVER_PROFILES[server_name].copy()
-
-    # Override URL if provided
-    if custom_url:
-        config["base_url"] = custom_url
-        logger.info(f"Using custom FHIR URL: {custom_url}")
-
-    logger.info(f"Testing against: {config['name']} at {config['base_url']}")
-    return config
-
-
-# ============================================================================
-# FHIR Server Client Fixtures
-# ============================================================================
-
-@pytest.fixture
-async def fhir_server(fhir_server_config):
-    """
-    FHIR server client for testing.
-
-    Works with any FHIR server (HAPI, Aidbox, Azure, Firely, etc.)
-    Waits for server to be ready before yielding client.
-    """
-    base_url = fhir_server_config["base_url"]
-    server_name = fhir_server_config["name"]
-    timeout_seconds = fhir_server_config["startup_timeout"]
-    metadata_path = fhir_server_config["metadata_path"]
-
-    async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
-        # Wait for FHIR server to be ready
-        logger.info(f"Waiting for {server_name} to be ready at {base_url}...")
-        attempts = timeout_seconds // 2
-
-        for attempt in range(attempts):
-            try:
-                response = await client.get(metadata_path)
-                if response.status_code == 200:
-                    capability = response.json()
-                    fhir_version = capability.get("fhirVersion", "unknown")
-
-                    # Get server version (different servers provide this differently)
-                    software = capability.get("software")
-                    if software and isinstance(software, dict):
-                        server_version = software.get("version", "unknown")
-                    else:
-                        # Aidbox and others may not include software.version
-                        server_version = "unknown (not in CapabilityStatement)"
-
-                    logger.info(
-                        f"{server_name} is ready! "
-                        f"Server version: {server_version}, "
-                        f"FHIR version: {fhir_version}"
-                    )
-                    break
-            except Exception as e:
-                logger.debug(
-                    f"{server_name} not ready "
-                    f"(attempt {attempt + 1}/{attempts}): {e}"
-                )
-                await asyncio.sleep(2)
-        else:
-            raise RuntimeError(
-                f"{server_name} not ready after {timeout_seconds} seconds. "
-                f"Is the server running at {base_url}?"
-            )
-
-        yield client
-
-
-# Backward compatibility alias
-@pytest.fixture
-async def hapi_client(fhir_server):
-    """
-    Backward compatibility alias for fhir_server.
-
-    DEPRECATED: Use fhir_server instead.
-    This fixture will be removed in a future version.
-    """
-    return fhir_server
-
-
-@pytest.fixture
-async def cleanup_all_resources(fhir_server, request):
-    """
-    Optional fixture to clean up ALL test resources.
-
-    Use this explicitly in tests that need a clean slate:
-        async def test_something(cleanup_all_resources, fhir_server):
-            # Test runs with clean database
-
-    Or call it manually:
-        await cleanup_all_resources()
-    """
-    async def _cleanup():
-        # Skip cleanup for read-only servers
-        server_profile = request.config.getoption("--fhir-server")
-        if server_profile == "smile":
-            return
-
-        # Clean up test resources
-        resource_types = ['Questionnaire', 'ValueSet', 'CodeSystem', 'Library']
-
-        for resource_type in resource_types:
-            try:
-                response = await fhir_server.get(f"/{resource_type}")
-
-                if response.status_code == 200:
-                    bundle = response.json()
-                    entries = bundle.get('entry', [])
-
-                    for entry in entries:
-                        try:
-                            resource_id = entry['resource']['id']
-                            await fhir_server.delete(f"/{resource_type}/{resource_id}")
-                            logger.debug(f"Cleaned up {resource_type}/{resource_id}")
-                        except Exception as e:
-                            logger.debug(f"Could not delete {resource_type}: {e}")
-
-            except Exception as e:
-                logger.debug(f"Cleanup error for {resource_type}: {e}")
-
-    # Don't run automatically - just provide the function
-    return _cleanup
-
-
-@pytest.fixture
-async def api_client():
-    """FastAPI test client."""
-    async with httpx.AsyncClient(base_url=API_BASE_URL, timeout=30.0) as client:
-        # Wait for API to be ready
-        logger.info("Waiting for FastAPI test server to be ready...")
-        for attempt in range(30):
-            try:
-                response = await client.get("/health")
-                if response.status_code == 200:
-                    logger.info("FastAPI test server is ready!")
-                    break
-            except Exception as e:
-                logger.debug(f"API not ready (attempt {attempt + 1}/30): {e}")
-                await asyncio.sleep(1)
-        else:
-            raise RuntimeError("FastAPI not ready after 30 seconds")
-
-        yield client
+def fhir_base_url(request) -> str:
+    url = request.config.getoption("--fhir-url") or DEFAULT_FHIR_BASE_URL
+    logger.info(f"Testing against HAPI at {url}")
+    return url
 
 
 @pytest.fixture(scope="session")
-def server_profile(fhir_server_config):
+def _hapi_ready(fhir_base_url) -> None:
+    """Wait once per session for HAPI's /metadata."""
+    deadline = HAPI_STARTUP_TIMEOUT // 2
+    with httpx.Client(base_url=fhir_base_url, timeout=30.0) as client:
+        for attempt in range(deadline):
+            try:
+                response = client.get("/metadata")
+                if response.status_code == 200:
+                    capability = response.json()
+                    software = capability.get("software") or {}
+                    logger.info(
+                        "HAPI ready: version=%s fhirVersion=%s",
+                        software.get("version", "unknown"),
+                        capability.get("fhirVersion", "unknown"),
+                    )
+                    return
+            except Exception as e:  # noqa: BLE001 — retry loop
+                logger.debug(f"HAPI not ready (attempt {attempt + 1}/{deadline}): {e}")
+
+            time.sleep(2)
+    raise RuntimeError(
+        f"HAPI not ready after {HAPI_STARTUP_TIMEOUT}s. Is the stack running "
+        f"at {fhir_base_url}? (make test-stack)"
+    )
+
+
+# HAPI reuses cached search results for 60 s. Tests create and delete
+# resources under the same canonical across runs, so every search must bypass
+# the cache (HAPI honours Cache-Control: no-cache).
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+@pytest.fixture
+async def fhir_server(fhir_base_url, _hapi_ready):
+    """HTTP client against HAPI (the Form Manager image)."""
+    async with httpx.AsyncClient(base_url=fhir_base_url, timeout=30.0, headers=NO_CACHE) as client:
+        yield client
+
+
+# ----------------------------------------------------------------------------
+# Sidecar: in-process by default
+# ----------------------------------------------------------------------------
+
+def _load_app(fhir_base_url: str):
+    """Import the FastAPI app with FHIR_BASE_URL pointing at the test HAPI.
+
+    Settings are read at import time (lru_cache), so the env var must be in
+    place before the first import of ``app``.
     """
-    Get server profile for conditional test logic.
+    os.environ["FHIR_BASE_URL"] = fhir_base_url
+    os.environ.setdefault("LOG_LEVEL", "warning")
+    from app.main import app  # noqa: WPS433 — deliberate late import
+    return app
 
-    Use this to handle server-specific behavior differences.
 
-    Example:
-        if server_profile["validation_strict"]:
-            assert response.status_code == 400
+@pytest.fixture(scope="session")
+def sidecar_app(fhir_base_url):
+    if API_BASE_URL:
+        return None
+    return _load_app(fhir_base_url)
+
+
+@pytest.fixture(autouse=True)
+async def _reset_sidecar_singletons(sidecar_app):
+    """Give every test fresh service singletons.
+
+    The sidecar keeps module-level singletons holding httpx/aiohttp clients.
+    pytest-asyncio runs each test on its own event loop; a connection pool
+    created on a previous loop must not be reused. Reset before, close after.
+    """
+    if sidecar_app is None:
+        yield
+        return
+
+    from app.routers import questionnaires as q_router
+    from app.services import fhir_client as fc
+
+    q_router._package_service = None
+    q_router._localization_service = None
+    q_router._scoring_extract_service = None
+    fc._fhir_client = None
+    yield
+    if q_router._package_service is not None:
+        await q_router._package_service.close()
+    if q_router._scoring_extract_service is not None:
+        await q_router._scoring_extract_service.aclose()
+    q_router._package_service = None
+    q_router._localization_service = None
+    q_router._scoring_extract_service = None
+    fc._fhir_client = None
+    sidecar_app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def api_client(sidecar_app, _hapi_ready):
+    """Client for the FastAPI sidecar (in-process ASGI, or HTTP if API_BASE_URL)."""
+    if sidecar_app is not None:
+        transport = httpx.ASGITransport(app=sidecar_app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://sidecar.test", timeout=60.0
+        ) as client:
+            yield client
+        return
+
+    async with httpx.AsyncClient(base_url=API_BASE_URL, timeout=60.0) as client:
+        for attempt in range(30):
+            try:
+                if (await client.get("/health")).status_code == 200:
+                    break
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Sidecar not ready (attempt {attempt + 1}/30): {e}")
+            await asyncio.sleep(1)
         else:
-            assert response.status_code in [200, 400]
-    """
-    return fhir_server_config
+            raise RuntimeError(f"Sidecar not ready after 30s at {API_BASE_URL}")
+        yield client
 
 
 # ============================================================================
 # Resource Creation/Cleanup Fixtures
 # ============================================================================
 
-@pytest.fixture
-async def clean_questionnaire(fhir_server):
-    """
-    Create a Questionnaire and clean it up after test.
-
-    Returns a function that creates and tracks Questionnaires.
-    """
+def _tracked_creator(fhir_server, resource_type: str):
     created_ids = []
 
-    async def _create(questionnaire: Dict[str, Any]) -> str:
-        """Create Questionnaire and track for cleanup."""
-        response = await fhir_server.post("/Questionnaire", json=questionnaire)
+    async def _create(resource: Dict[str, Any]) -> str:
+        response = await fhir_server.post(f"/{resource_type}", json=resource)
         response.raise_for_status()
         resource_id = response.json()["id"]
         created_ids.append(resource_id)
         return resource_id
 
-    yield _create
+    async def _cleanup():
+        for resource_id in created_ids:
+            try:
+                await fhir_server.delete(f"/{resource_type}/{resource_id}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to cleanup {resource_type}/{resource_id}: {e}")
 
-    # Cleanup
-    for resource_id in created_ids:
-        try:
-            await fhir_server.delete(f"/Questionnaire/{resource_id}")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup Questionnaire/{resource_id}: {e}")
+    return _create, _cleanup
+
+
+@pytest.fixture
+async def clean_questionnaire(fhir_server):
+    """Create Questionnaires that are deleted on teardown."""
+    create, cleanup = _tracked_creator(fhir_server, "Questionnaire")
+    yield create
+    await cleanup()
 
 
 @pytest.fixture
 async def clean_valueset(fhir_server):
-    """
-    Create a ValueSet and clean it up after test.
-    """
-    created_ids = []
-
-    async def _create(valueset: Dict[str, Any]) -> str:
-        """Create ValueSet and track for cleanup."""
-        response = await fhir_server.post("/ValueSet", json=valueset)
-        response.raise_for_status()
-        resource_id = response.json()["id"]
-        created_ids.append(resource_id)
-        return resource_id
-
-    yield _create
-
-    # Cleanup
-    for resource_id in created_ids:
-        try:
-            await fhir_server.delete(f"/ValueSet/{resource_id}")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup ValueSet/{resource_id}: {e}")
+    create, cleanup = _tracked_creator(fhir_server, "ValueSet")
+    yield create
+    await cleanup()
 
 
 @pytest.fixture
 async def clean_codesystem(fhir_server):
-    """
-    Create a CodeSystem and clean it up after test.
-    """
-    created_ids = []
-
-    async def _create(codesystem: Dict[str, Any]) -> str:
-        """Create CodeSystem and track for cleanup."""
-        response = await fhir_server.post("/CodeSystem", json=codesystem)
-        response.raise_for_status()
-        resource_id = response.json()["id"]
-        created_ids.append(resource_id)
-        return resource_id
-
-    yield _create
-
-    # Cleanup
-    for resource_id in created_ids:
-        try:
-            await fhir_server.delete(f"/CodeSystem/{resource_id}")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup CodeSystem/{resource_id}: {e}")
+    create, cleanup = _tracked_creator(fhir_server, "CodeSystem")
+    yield create
+    await cleanup()
 
 
 @pytest.fixture
-async def load_test_fixtures(fhir_server):
-    """
-    Load common test fixtures into FHIR server for testing.
+async def clean_library(fhir_server):
+    create, cleanup = _tracked_creator(fhir_server, "Library")
+    yield create
+    await cleanup()
 
-    Returns dict mapping fixture names to resource IDs.
-    """
+
+@pytest.fixture
+async def test_subject(fhir_server):
+    """A throwaway Patient. On teardown, delete everything that was written
+    for it (Observations, QuestionnaireResponses) and the Patient itself, so
+    repeated runs against one stack do not accumulate data."""
+    r = await fhir_server.post(
+        "/Patient",
+        json={"resourceType": "Patient",
+              "name": [{"family": f"Test-{uuid.uuid4().hex[:6]}"}]},
+    )
+    r.raise_for_status()
+    patient_ref = f"Patient/{r.json()['id']}"
+    yield patient_ref
+    for rtype in ("Observation", "QuestionnaireResponse"):
+        try:
+            await fhir_server.delete(f"/{rtype}", params={"subject": patient_ref})
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Cleanup of {rtype} for {patient_ref} failed: {e}")
+    try:
+        await fhir_server.delete(f"/{patient_ref}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Cleanup of {patient_ref} failed: {e}")
+
+
+@pytest.fixture
+async def load_test_fixtures(fhir_server, clean_questionnaire, clean_valueset, clean_codesystem):
+    """Load the synthetic PHQ-2 / diabetes fixtures; all deleted on teardown."""
     from tests.fixtures.sample_resources import (
+        DIABETES_QUESTIONNAIRE,
+        GLUCOSE_VALUESET,
+        PHQ2_CODESYSTEM,
         PHQ2_QUESTIONNAIRE,
         PHQ2_VALUESET,
-        PHQ2_CODESYSTEM,
-        DIABETES_QUESTIONNAIRE,
-        GLUCOSE_VALUESET
     )
 
-    fixtures = {}
-
-    # Load PHQ-2 resources
-    try:
-        response = await fhir_server.post("/Questionnaire", json=PHQ2_QUESTIONNAIRE)
-        fixtures["phq2_questionnaire_id"] = response.json()["id"]
-
-        response = await fhir_server.post("/ValueSet", json=PHQ2_VALUESET)
-        fixtures["phq2_valueset_id"] = response.json()["id"]
-
-        response = await fhir_server.post("/CodeSystem", json=PHQ2_CODESYSTEM)
-        fixtures["phq2_codesystem_id"] = response.json()["id"]
-
-        logger.info("Loaded PHQ-2 test fixtures")
-    except Exception as e:
-        logger.warning(f"Failed to load PHQ-2 fixtures: {e}")
-
-    # Load Diabetes resources
-    try:
-        response = await fhir_server.post("/Questionnaire", json=DIABETES_QUESTIONNAIRE)
-        fixtures["diabetes_questionnaire_id"] = response.json()["id"]
-
-        response = await fhir_server.post("/ValueSet", json=GLUCOSE_VALUESET)
-        fixtures["glucose_valueset_id"] = response.json()["id"]
-
-        logger.info("Loaded Diabetes test fixtures")
-    except Exception as e:
-        logger.warning(f"Failed to load Diabetes fixtures: {e}")
-
-    yield fixtures
-
-    # Cleanup all created resources
-    for fixture_name, resource_id in fixtures.items():
-        try:
-            # Extract resource type from fixture name
-            if "questionnaire" in fixture_name:
-                resource_type = "Questionnaire"
-            elif "valueset" in fixture_name:
-                resource_type = "ValueSet"
-            elif "codesystem" in fixture_name:
-                resource_type = "CodeSystem"
-            else:
-                continue
-
-            await fhir_server.delete(f"/{resource_type}/{resource_id}")
-            logger.debug(f"Cleaned up {resource_type}/{resource_id}")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup {fixture_name} ({resource_id}): {e}")
+    return {
+        "phq2_questionnaire_id": await clean_questionnaire(PHQ2_QUESTIONNAIRE),
+        "phq2_valueset_id": await clean_valueset(PHQ2_VALUESET),
+        "phq2_codesystem_id": await clean_codesystem(PHQ2_CODESYSTEM),
+        "diabetes_questionnaire_id": await clean_questionnaire(DIABETES_QUESTIONNAIRE),
+        "glucose_valueset_id": await clean_valueset(GLUCOSE_VALUESET),
+    }
 
 
 # ============================================================================
 # Real MII PRO content — pre-loaded by the container at boot time
 # ============================================================================
 
-# Canonical URLs of MII PRO 2026.7.0 Questionnaires that the Form Manager
-# image guarantees to ship and load. Tests that hit these can skip the
-# fragile upload-then-resolve dance — content is deterministic and always
-# present.
+# Canonical URLs of MII PRO Questionnaires that the Form Manager image
+# guarantees to ship and load (version: see Dockerfile.form-manager
+# MII_PRO_VERSION). Tests that hit these can skip the fragile
+# upload-then-resolve dance — content is deterministic and always present.
 PRO_NAMESPACE = "https://www.medizininformatik-initiative.de/fhir/ext/modul-pro/Questionnaire"
 PRO_QUESTIONNAIRE_CANONICALS = {
     # 2 external answerValueSet bindings (qlq-c30-scale-4pt / -7pt),
     # each VS in turn binds CodeSystem mii-cs-pro-eortc-qlq-c30 →
     # full Q → VS → CS chain, ideal for transitive-dep tests.
-    "qlq_c30_variant_a": f"{PRO_NAMESPACE}/mii-qst-pro-eortc-qlq-c30-variant-a",
-    # 2 contained #-fragment ValueSet bindings — exercises the
-    # contained-VS code path (separate from external canonical resolution).
+    # (Since 2027 the plain QLQ-C30 carries this chain; the former
+    # variant-a/-b Questionnaires were dropped upstream.)
     "qlq_c30":           f"{PRO_NAMESPACE}/mii-qst-pro-eortc-qlq-c30",
     # No answerValueSet at all — for baseline structural tests
     # (Bundle.type, first-entry, no-deps minimal bundle, SDC tags, etc.).
@@ -461,23 +319,46 @@ def _load_pro_library_version() -> str:
     env = os.getenv("PRO_LIBRARY_VERSION")
     if env:
         return env
-    versions_env = os.path.join(
-        os.path.dirname(__file__), "..", "..", "versions.env"
-    )
+    versions_env = os.path.join(os.path.dirname(__file__), "..", "..", "versions.env")
     if os.path.isfile(versions_env):
         with open(versions_env) as fh:
             for line in fh:
                 line = line.strip()
                 if line.startswith("PRO_LIBRARY_VERSION="):
                     return line.split("=", 1)[1].strip()
-    raise RuntimeError(
-        "PRO_LIBRARY_VERSION not set and versions.env not found / lacks entry"
-    )
+    raise RuntimeError("PRO_LIBRARY_VERSION not set and versions.env not found / lacks entry")
 
 
 PRO_LIBRARY_VERSION = _load_pro_library_version()
+
+
+def _dockerfile_arg(name: str) -> str:
+    """Upstream pins (MII PRO version, retained versions) live only in
+    Dockerfile.form-manager ARGs. Env wins (CI exports them); else parse."""
+    env = os.getenv(name)
+    if env is not None:
+        return env
+    dockerfile = os.path.join(os.path.dirname(__file__), "..", "..", "Dockerfile.form-manager")
+    with open(dockerfile) as fh:
+        for line in fh:
+            if line.startswith(f"ARG {name}="):
+                return line.split("=", 1)[1].strip().strip('"')
+    raise RuntimeError(f"ARG {name} not found in Dockerfile.form-manager and not in env")
+
+
+MII_PRO_VERSION = _dockerfile_arg("MII_PRO_VERSION")
+MII_PRO_RETAINED_VERSIONS = _dockerfile_arg("MII_PRO_RETAINED_VERSIONS").split()
+MII_PRO_PACKAGE = "de.medizininformatikinitiative.kerndatensatz.pros"
+MII_PRO_BASE = "https://www.medizininformatik-initiative.de/fhir/ext/modul-pro"
+PCOR_MII_VERSION = os.getenv("PCOR_MII_VERSION") or next(
+    (line.split("=", 1)[1].strip()
+     for line in open(os.path.join(os.path.dirname(__file__), "..", "..", "versions.env"))
+     if line.startswith("PCOR_MII_VERSION=")),
+    None,
+)
 PRO_LIBRARY_CANONICALS = {
     "phq_9":           f"{PRO_LIBRARY_NAMESPACE}/Questionnaire/phq-9",
+    "sf4a":            f"{PRO_LIBRARY_NAMESPACE}/Questionnaire/promis-depression-sf4a",
     # Release-manifest id mirrors the version with dots replaced by dashes,
     # matching the pro-library FSH naming convention.
     "release_manifest": (
@@ -487,23 +368,23 @@ PRO_LIBRARY_CANONICALS = {
 }
 
 
-@pytest.fixture
-async def pro_questionnaires(fhir_server_config):
+@pytest.fixture(scope="session")
+def pro_questionnaires(fhir_base_url, _hapi_ready) -> Dict[str, Dict[str, Any]]:
     """
     Resolve MII PRO Questionnaires that the container ships pre-loaded.
 
     Returns dict of short-name → {"id", "url", "version"} for each entry in
-    PRO_QUESTIONNAIRE_CANONICALS. Fails the test run loudly if a referenced
-    PRO Questionnaire is missing — that means the container's IG bundling
-    is broken, not the test.
+    PRO_QUESTIONNAIRE_CANONICALS, at the CURRENT MII_PRO_VERSION (retained
+    older versions coexist on the server). Fails the test run loudly if a
+    referenced PRO Questionnaire is missing — that means the container's IG
+    bundling is broken, not the test. Resolved once per session.
     """
-    base_url = fhir_server_config["base_url"]
     resolved: Dict[str, Dict[str, Any]] = {}
-
-    async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
+    with httpx.Client(base_url=fhir_base_url, timeout=30.0, headers=NO_CACHE) as client:
         for short_name, canonical in PRO_QUESTIONNAIRE_CANONICALS.items():
-            response = await client.get(
-                "/Questionnaire", params={"url": canonical, "_summary": "true"}
+            response = client.get(
+                "/Questionnaire",
+                params={"url": canonical, "version": MII_PRO_VERSION, "_summary": "true"},
             )
             response.raise_for_status()
             bundle = response.json()
@@ -519,17 +400,4 @@ async def pro_questionnaires(fhir_server_config):
                 "url": entry["url"],
                 "version": entry.get("version"),
             }
-            logger.info(
-                f"Resolved PRO Questionnaire {short_name!r} → "
-                f"id={entry['id']} version={entry.get('version')}"
-            )
-
     return resolved
-
-
-# Marker for skipping tests if HAPI is not available
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "requires_hapi: mark test as requiring HAPI FHIR server"
-    )

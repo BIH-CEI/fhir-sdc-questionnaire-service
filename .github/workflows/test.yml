@@ -31,6 +31,10 @@ jobs:
           # MII PRO / SDC: pinned (version + SHA) only in Dockerfile.form-manager,
           # which Renovate bumps; read here for tags and smoke-test messages.
           echo "MII_PRO_VERSION=$(grep -E '^ARG MII_PRO_VERSION=' Dockerfile.form-manager | cut -d= -f2)" >> "$GITHUB_ENV"
+          RETAINED=$(sed -nE 's/^ARG MII_PRO_RETAINED_VERSIONS="?([^"]*)"?$/\1/p' Dockerfile.form-manager)
+          echo "MII_PRO_RETAINED_VERSIONS=${RETAINED}" >> "$GITHUB_ENV"
+          # Loader declaration: "<package>@<version>" per retained version.
+          echo "RETAINED_PACKAGE_VERSIONS=$(for v in ${RETAINED}; do printf 'de.medizininformatikinitiative.kerndatensatz.pros@%s ' "$v"; done)" >> "$GITHUB_ENV"
 
       - name: Build form-manager image (load locally, shared GHA cache)
         uses: docker/build-push-action@v5
@@ -59,6 +63,13 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt -r requirements-test.txt
 
+      # Fast layer first: pure-function tests + loader version ordering. No
+      # Docker needed, so a logic bug fails in seconds, not after the boot.
+      - name: Unit tests
+        run: |
+          (cd api && pytest tests/unit -q)
+          bash hapi-scripts/test-loader-version-order.sh
+
       - name: Start test stack (HAPI image + FastAPI sidecar)
         env:
           FORM_MANAGER_IMAGE: fhir-sdc-form-manager:ci
@@ -72,42 +83,34 @@ jobs:
         run: |
           # Questionnaire / Library / Provenance / IG / OD are not auto-
           # installed by HAPI's PackageInstallerSvc — PUT them externally
-          # from the local-packages tarballs against the exposed FHIR
-          # endpoint.
-          #
-          # The runner's ./local-packages/ only has the pro-library tarball
-          # (MII PRO + SDC are fetched into the image at build time, never
-          # land on the runner). docker cp them out of the container so the
-          # loader sees the full set.
-          mkdir -p ./local-packages-merged
-          cp ./local-packages/*.tgz ./local-packages-merged/ 2>/dev/null || true
-          docker cp hapi-fhir-test:/data/hapi/local-packages/. ./local-packages-merged/
-          ls -la ./local-packages-merged/
+          # against the exposed FHIR endpoint. The image's own package dir
+          # is the declared content set (current + retained MII PRO, SDC,
+          # PCOR-MII, PRO Library); copy it out of the container. Never mix
+          # in the repo's local-packages/, which also holds stale tarballs.
+          mkdir -p ./local-packages-image
+          docker cp hapi-fhir-test:/data/hapi/local-packages/. ./local-packages-image/
+          ls -la ./local-packages-image/
 
-          HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages-merged \
+          HAPI_URL=http://localhost:8081/fhir PKGS_DIR=./local-packages-image \
             ./hapi-scripts/load-instance-resources.sh
 
-      - name: Run SDC compliance + integration tests (with coverage)
+      # The sidecar app runs IN-PROCESS (httpx ASGI transport) against the
+      # HAPI container, which is what makes --cov=app measure real lines.
+      # One test (test_sidecar_container.py) still hits the fastapi-test
+      # container on :8001 to prove the shipped image boots.
+      - name: Integration, content and upstream-behaviour tests (with coverage)
         run: |
           cd api
-          pytest tests/sdc_compliance/ tests/integration/ \
+          pytest tests/integration/ tests/content/ tests/upstream/ \
             -v --tb=short --color=yes \
-            --cov=app --cov-report=xml --cov-report=html --cov-report=term
+            --cov=app --cov-report=xml --cov-report=html --cov-report=term \
+            --cov-fail-under=75
 
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./api/coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-
-      - name: Archive test results
+      - name: Archive coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: coverage-report
           path: |
             api/htmlcov/
             api/coverage.xml

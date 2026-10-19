@@ -115,6 +115,10 @@ services:
       HAPI_URL: http://hapi-fhir:8080/fhir
       PKGS_DIR: /pkgs
       WAIT_TIMEOUT: "240"
+      # Older package versions to load next to the current one ("<name>@<version>",
+      # space-separated). `make up` derives it from MII_PRO_RETAINED_VERSIONS in
+      # Dockerfile.form-manager; undeclared older tarballs in ./local-packages are skipped.
+      RETAINED_PACKAGE_VERSIONS: ${RETAINED_PACKAGE_VERSIONS:-}
     command: >
       sh -c "apk add --no-cache bash curl jq tar &&
              bash /scripts/load-instance-resources.sh"

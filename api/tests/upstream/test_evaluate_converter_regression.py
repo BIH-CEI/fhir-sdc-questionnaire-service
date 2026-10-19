@@ -24,15 +24,16 @@ die Parameters-Ressource bricht. Drei Tests sichern das in beide Richtungen:
 """
 import pytest
 
-from .test_compute_and_extract import (
+from tests.support.pro_library import (
     PHQ9_Q_ID,
-    _compute_and_extract,
-    _create_patient,
-    _phq9_qr,
-    _post_qr,
+    PHQ9_SCORING_LIBRARY_ID,
+    compute_and_extract,
+    phq9_qr,
+    post_qr,
 )
 
-SCORING_LIBRARY_ID = "phq-9-scoring"
+pytestmark = [pytest.mark.upstream, pytest.mark.asyncio]
+
 SCALAR_DEFINES = ["PHQ9Severity", "PHQ9TotalScore", "PROMISDepressionTScore"]
 CONVERTER_ERROR_FRAGMENT = "Could not resolve inner FHIR type"
 
@@ -41,9 +42,7 @@ async def _evaluate(fhir_server, subject_ref: str, expressions=None) -> dict:
     params = [("subject", subject_ref)]
     for e in expressions or []:
         params.append(("expression", e))
-    r = await fhir_server.get(
-        f"/Library/{SCORING_LIBRARY_ID}/$evaluate", params=params
-    )
+    r = await fhir_server.get(f"/Library/{PHQ9_SCORING_LIBRARY_ID}/$evaluate", params=params)
     r.raise_for_status()
     return r.json()
 
@@ -60,33 +59,24 @@ def _has_converter_error(parameters: dict) -> bool:
     return False
 
 
-@pytest.mark.asyncio
-async def test_compute_succeeds_despite_converter_breaking_public_define(
-    api_client, fhir_server
-):
+async def test_compute_succeeds_despite_converter_breaking_public_define(api_client, fhir_server, test_subject):
     """Der eigentliche Workaround-Regressionstest, auf Verhaltensebene:
+    phq-9-scoring traegt das OEFFENTLICHE, resource-wertige Define
+    `MostRecentResponse`, an dem der >=4.9-Converter bricht. Der Sidecar muss
+    trotzdem durchkommen, weil er nur die Skalar-Defines der
+    `sdc-calculatedExpression`s anfordert."""
+    await post_qr(fhir_server, phq9_qr(test_subject, raw=27))
 
-    phq-9-scoring traegt (Stand 0.1.4) das OEFFENTLICHE, resource-wertige
-    Define `MostRecentResponse`, an dem der >=4.9-Converter bricht. Der
-    Sidecar muss trotzdem durchkommen, weil er nur die Skalar-Defines der
-    `sdc-calculatedExpression`s anfordert. Bricht jemand den expression-
-    Filter wieder heraus, wird dieser Test auf HAPI >= 8.12 rot.
-    """
-    patient_ref = await _create_patient(fhir_server)
-    await _post_qr(fhir_server, _phq9_qr(patient_ref, raw=27))
-
-    result = await _compute_and_extract(api_client, PHQ9_Q_ID, patient_ref)
+    result = await compute_and_extract(api_client, PHQ9_Q_ID, test_subject)
     assert result["status"] == 200, f"non-200: {result['text'][:300]}"
 
 
-@pytest.mark.asyncio
-async def test_filtered_evaluate_returns_requested_scalar_defines(fhir_server):
+async def test_filtered_evaluate_returns_requested_scalar_defines(fhir_server, test_subject):
     """$evaluate MIT expression-Filter: genau die angeforderten Defines,
     korrekte Werte, kein Converter-Fehlerparameter."""
-    patient_ref = await _create_patient(fhir_server)
-    await _post_qr(fhir_server, _phq9_qr(patient_ref, raw=0))
+    await post_qr(fhir_server, phq9_qr(test_subject, raw=0))
 
-    params = await _evaluate(fhir_server, patient_ref, SCALAR_DEFINES)
+    params = await _evaluate(fhir_server, test_subject, SCALAR_DEFINES)
     assert not _has_converter_error(params), params
 
     named = _by_name(params)
@@ -96,7 +86,6 @@ async def test_filtered_evaluate_returns_requested_scalar_defines(fhir_server):
     assert named["PROMISDepressionTScore"].get("valueDecimal") == 37.4
 
 
-@pytest.mark.asyncio
 @pytest.mark.xfail(
     reason=(
         "clinical-reasoning >= 4.9 (HAPI >= 8.12): CqlFhirParametersConverter "
@@ -107,17 +96,11 @@ async def test_filtered_evaluate_returns_requested_scalar_defines(fhir_server):
     ),
     strict=True,
 )
-async def test_unfiltered_evaluate_upstream_tripwire(fhir_server):
+async def test_unfiltered_evaluate_upstream_tripwire(fhir_server, test_subject):
     """Stolperdraht: UNgefilterter $evaluate inkl. des resource-wertigen
-    Defines. Erwartet heute den Converter-Fehler (xfail). Sobald er
-    durchlaeuft, macht strict=True daraus einen harten Fehlschlag, damit
-    der Upstream-Fix nicht unbemerkt bleibt."""
-    patient_ref = await _create_patient(fhir_server)
-    await _post_qr(fhir_server, _phq9_qr(patient_ref, raw=5))
+    Defines. Erwartet heute den Converter-Fehler (xfail)."""
+    await post_qr(fhir_server, phq9_qr(test_subject, raw=5))
 
-    params = await _evaluate(fhir_server, patient_ref, expressions=None)
-    assert not _has_converter_error(params), (
-        f"Converter-Fehler (erwartet auf CR >= 4.9): {params}"
-    )
-    named = _by_name(params)
-    assert named.get("PHQ9TotalScore", {}).get("valueInteger") == 5
+    params = await _evaluate(fhir_server, test_subject, expressions=None)
+    assert not _has_converter_error(params), f"Converter-Fehler (erwartet auf CR >= 4.9): {params}"
+    assert _by_name(params).get("PHQ9TotalScore", {}).get("valueInteger") == 5
