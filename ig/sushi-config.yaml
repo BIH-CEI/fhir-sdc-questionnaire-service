@@ -1,0 +1,54 @@
+# FHIR SDC Form Manager — Implementation Guide (BIH template).
+# Build: ig/fetch-template.sh && cd ig && sushi . && java -jar publisher.jar -ig ig.ini
+id: bih-cei.fhir.sdc-form-manager
+canonical: https://bih-cei.github.io/fhir-sdc-questionnaire-service
+name: SDCFormManager
+title: FHIR SDC Form Manager
+description: >-
+  API contract, content, access model, deployment and maintenance of the
+  BIH-CEI FHIR SDC Form Manager (HAPI FHIR with SDC, MII PRO, PRO Library and
+  PCOR-MII content, plus a sidecar for CRMI $package, $localize and
+  $compute-and-extract).
+status: draft
+version: 0.2.0
+fhirVersion: 4.0.1
+copyrightYear: 2026+
+releaseLabel: ci-build
+license: CC-BY-4.0
+jurisdiction: urn:iso:std:iso:3166#DE "Germany"
+publisher:
+  name: Berlin Institute of Health at Charité (BIH-CEI)
+  url: https://www.bihealth.org/
+
+dependencies:
+  hl7.fhir.uv.sdc: 4.0.0
+  hl7.fhir.uv.crmi: 2.0.0
+
+parameters:
+  show-inherited-invariants: false
+  usage-stats-opt-out: true
+
+pages:
+  index.md:
+    title: Home
+  operations.md:
+    title: Operations
+  content.md:
+    title: Content and Versions
+  access.md:
+    title: Access (mTLS)
+  deployment.md:
+    title: Deployment
+  maintenance.md:
+    title: Maintenance
+  errors.md:
+    title: Errors
+
+menu:
+  Home: index.html
+  Operations: operations.html
+  Content: content.html
+  Access: access.html
+  Deployment: deployment.html
+  Maintenance: maintenance.html
+  Artifacts: artifacts.html

@@ -17,7 +17,8 @@ Human docs: `README.md` (overview, versions, limitations), `ARCHITECTURE.md`, `T
 | `scripts/` | `refresh-pcor-mii.sh`, `sync-from-crmi.py`, `sync-from-ig.py`, `install-mii-pro.py`, backup/restore. The ISiK scripts, `install_mii_package.py` and `check-server-versions.*` are legacy. |
 | `local-packages/` | Vendored package tarballs |
 | `deploy/` | Deployment bundle (published images, mTLS proxy); `Dockerfile.loader`, `Dockerfile.proxy` build its extra images |
-| `docs/` | Strategy docs + `index.html`; the whole folder is published by `pages.yml` |
+| `docs/` | Strategy docs (not published) |
+| `ig/` | Implementation Guide (SUSHI + IG Publisher, BIH template fetched by `ig/fetch-template.sh`), published to GitHub Pages by `pages.yml` |
 | `.github/workflows/` | `test.yml`, `build-and-publish.yml`, `auto-pin-pro-sha.yml`, `auto-vendor-pcor-mii.yml`, `pages.yml` |
 
 ## Commands

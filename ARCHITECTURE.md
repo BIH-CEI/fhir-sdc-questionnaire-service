@@ -152,7 +152,7 @@ Phase 1 of the access model: an nginx proxy is the only entry point; HAPI and th
 | `build-and-publish.yml` | Builds and smoke-tests the image, then pushes multi-arch to GHCR on the default branch and on `v*` tags. Smoke checks: ≥ 20 MII PRO SDs; PRO Library PHQ-9 + manifest; PCOR `UKHDEDP` + `pcor-item-dictionary`; `$expand`.. Then `publish-components` pushes `fhir-sdc-api`, `fhir-sdc-loader` and `fhir-sdc-proxy` with the same tags. |
 | `auto-pin-pro-sha.yml` | On Renovate PRs that touch the Dockerfile: recomputes and commits `MII_PRO_SHA256` |
 | `auto-vendor-pcor-mii.yml` | On Renovate PRs that touch `versions.env`: runs `scripts/refresh-pcor-mii.sh` and commits the tgz |
-| `pages.yml` | Publishes `docs/` to GitHub Pages |
+| `pages.yml` | Builds the IG in `ig/` (SUSHI + IG Publisher 3.0.0, BIH template at a pinned commit); fails on QA errors; publishes to GitHub Pages from the default branch |
 
 `renovate.json` runs Mondays before 6am (Europe/Berlin):
 

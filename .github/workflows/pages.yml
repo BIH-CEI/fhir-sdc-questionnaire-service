@@ -1,40 +1,91 @@
-name: Deploy to GitHub Pages
+name: Implementation Guide (GitHub Pages)
+
+# Builds the IG in ig/ (SUSHI + HL7 IG Publisher, BIH template fetched at a
+# pinned commit by ig/fetch-template.sh). Pull requests build and check QA;
+# pushes to the default branch also publish to GitHub Pages.
 
 on:
   push:
     branches: [master, main]
     paths:
-      - 'docs/**'
+      - 'ig/**'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'ig/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+env:
+  SUSHI_VERSION: 3.20.1
+  PUBLISHER_VERSION: 3.0.0
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-      - name: Upload artifact
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install SUSHI and fetch the IG Publisher
+        run: |
+          npm install -g "fsh-sushi@${SUSHI_VERSION}"
+          mkdir -p ig/input-cache
+          curl -sfL --retry 5 -o ig/input-cache/publisher.jar \
+            "https://github.com/HL7/fhir-ig-publisher/releases/download/${PUBLISHER_VERSION}/publisher.jar"
+
+      - name: Fetch the BIH IG template (pinned)
+        run: ig/fetch-template.sh
+
+      - name: SUSHI
+        working-directory: ig
+        run: sushi .
+
+      - name: IG Publisher
+        working-directory: ig
+        run: java -Xmx6g -jar input-cache/publisher.jar -ig ig.ini -tx n/a
+
+      - name: Fail on QA errors
+        working-directory: ig
+        run: |
+          errs=$(python3 -c "import json; print(json.load(open('output/qa.json')).get('errs', 0))")
+          echo "IG Publisher QA errors: $errs (details: output/qa.html)"
+          [ "$errs" -eq 0 ]
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs'
+          path: ig/output
 
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
