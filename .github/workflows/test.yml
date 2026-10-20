@@ -76,6 +76,11 @@ jobs:
           (cd api && pytest tests/unit -q)
           bash hapi-scripts/test-loader-version-order.sh
 
+      # The real proxy image in front of a dummy backend: certificates,
+      # allowlist, read-only rules, TLS policy. Seconds, no HAPI needed.
+      - name: Proxy component tests
+        run: python -m pytest tests/proxy -q
+
       - name: Start test stack (HAPI image + FastAPI sidecar)
         env:
           FORM_MANAGER_IMAGE: fhir-sdc-form-manager:ci
