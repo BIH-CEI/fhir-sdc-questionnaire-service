@@ -6,7 +6,7 @@ The service runs from published container images; a server needs no source check
 | `hapi` | `ghcr.io/bih-cei/fhir-sdc-form-manager` | HAPI FHIR with all content |
 | `sidecar` | `ghcr.io/bih-cei/fhir-sdc-api` | Sidecar operations |
 | `loader` | `ghcr.io/bih-cei/fhir-sdc-loader` | One-shot: loads Questionnaires, Libraries etc. after boot (HAPI's package installer skips them) |
-| `db` | `postgres:15-alpine` | Persistence |
+| `db` | `postgres:18-alpine` | Persistence |
 
 All four project images are published with the same tags (`sha-<short>`, `form-manager-<version>`, `mii-pro-<version>`, `latest`); the loader carries exactly the package set of the Form Manager image it was built from. Pin one tag for all of them.
 
