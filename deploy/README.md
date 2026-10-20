@@ -21,7 +21,7 @@ All four project images are published with the same tags (`sha-<short>`, `form-m
 ## Run
 
 ```bash
-cp .env.example .env          # set FM_TAG, POSTGRES_PASSWORD, PROXY_PORT
+cp .env.example .env          # set FM_TAG and POSTGRES_PASSWORD (openssl rand -base64 32)
 # put ca.pem, server.pem, server.key, allowlist.map into ./pki/ (see pki/README.md)
 docker compose up -d
 docker compose ps             # db, hapi, sidecar healthy; loader exited 0

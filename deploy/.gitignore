@@ -1,0 +1,4 @@
+# Server-side configuration and keys stay on the server, never in this public repo.
+.env
+pki/*
+!pki/README.md
