@@ -29,14 +29,14 @@ services:
   # Dedicated Postgres for the consumer — kept separate so the consumer's
   # state can be wiped without touching producer data.
   consumer-db:
-    image: postgres:15-alpine
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     container_name: consumer-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - consumer_postgres_data:/var/lib/postgresql/data
+      - consumer_postgres_data:/var/lib/postgresql
     networks:
       - fhir-network
     healthcheck:

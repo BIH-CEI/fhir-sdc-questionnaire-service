@@ -15,7 +15,7 @@ site systems ──mTLS──▶ host ingress ──TLS passthrough──▶ pro
 | `hapi` | `ghcr.io/bih-cei/fhir-sdc-form-manager` | HAPI with SDC, MII PRO, PRO Library and PCOR-MII baked in |
 | `sidecar` | `ghcr.io/bih-cei/fhir-sdc-api` | `$package` (CRMI), `$localize`, `$compute-and-extract` |
 | `loader` | `ghcr.io/bih-cei/fhir-sdc-loader` | PUTs Questionnaires, Libraries etc. after boot (the installer skips them), then exits |
-| `db` | `postgres:15-alpine` | Persistence |
+| `db` | `postgres:18-alpine` | Persistence |
 
 All four project images are published with the same tags (`sha-<short>`, `form-manager-<version>`, `mii-pro-<version>`, `latest`), and the loader carries exactly the package set of the Form Manager image it was built from. Pin one tag for all of them via `FM_TAG`.
 
@@ -57,6 +57,7 @@ Add a site: append `<fingerprint> <site>;` to `pki/allowlist.map`, then `docker 
 | Re-run the loader | `docker compose run --rm loader` |
 | Logs | `docker compose logs -f proxy hapi sidecar` |
 | Backup | dump `db` (e.g. `docker compose exec db pg_dump -U hapi hapi > backup.sql`), plus the `hapi_lucene` volume or a `$reindex` after restore |
+| Postgres major upgrade (e.g. 15 to 18) | a new major version cannot open the old data directory: dump first, then start with a fresh `postgres_data` volume and restore (or recreate and let the loader refill). Since 18 the volume is mounted at `/var/lib/postgresql`, not `.../data`. |
 
 ## Not covered yet
 
