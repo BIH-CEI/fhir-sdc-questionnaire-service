@@ -1,11 +1,12 @@
 # Deployment bundle
 
-Runs the Form Manager from published images only. No repo checkout or build on the server. Only the mTLS proxy is reachable from outside.
+Runs the Form Manager from published images only. No repo checkout or build on the server. Only the mTLS proxy is reachable, and only over the host's existing Docker network (`EDGE_NETWORK`): the bundle publishes no port.
 
 ```
-site systems ──mTLS──▶ proxy :443 ─┬─▶ sidecar (FastAPI) ─┐
-                                   └─▶ hapi (Form Manager) ◀┘──▶ db (Postgres)
-                       loader (one-shot) ──▶ hapi
+site systems ──mTLS──▶ host ingress ──TLS passthrough──▶ proxy (fhir-sdc-form-manager:8443)
+                       (EDGE_NETWORK)                      ├─▶ sidecar (FastAPI) ─┐
+                                                           └─▶ hapi (Form Manager) ◀┘──▶ db (Postgres)
+                                     loader (one-shot) ──▶ hapi
 ```
 
 | Service | Image | Role |
@@ -21,13 +22,17 @@ All four project images are published with the same tags (`sha-<short>`, `form-m
 ## Run
 
 ```bash
-cp .env.example .env          # set FM_TAG and POSTGRES_PASSWORD (openssl rand -base64 32)
+cp .env.example .env          # set FM_TAG, POSTGRES_PASSWORD (openssl rand -base64 32), EDGE_NETWORK
 # put ca.pem, server.pem, server.key, allowlist.map into ./pki/ (see pki/README.md)
-docker compose up -d
+docker compose up -d          # standalone host without ingress: add -f docker-compose.yml -f docker-compose.port.yml
 docker compose ps             # db, hapi, sidecar healthy; loader exited 0
 ```
 
 The first start takes a few minutes: HAPI installs the packages, then the loader runs. For about a minute after a fresh start, `ValueSet/$expand` can return empty expansions while HAPI pre-expands ValueSets in the background.
+
+## Network
+
+The proxy joins the existing network named in `EDGE_NETWORK` (it must exist before `docker compose up`) under the alias `fhir-sdc-form-manager`; the ingress forwards to `fhir-sdc-form-manager:8443`. The proxy checks the client certificate itself, so the ingress must pass TLS through unterminated (SNI/TCP routing). If the ingress terminates TLS and checks certificates itself, the proxy needs a trusted-ingress mode that reads the identity from headers instead; that mode does not exist yet. `db`, `hapi`, `sidecar` and `loader` stay on an internal network without a route outside.
 
 ## Access
 

@@ -39,10 +39,18 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
 fi
 
 export FM_REGISTRY="$REG" FM_TAG="$TAG" PROXY_PORT="${PROXY_PORT:-9443}" \
-       PKI_DIR=./mtls/test-pki MTLS_ENV=test POSTGRES_PASSWORD=bundle-test
-C=(docker compose -p fm-bundle-test -f deploy/docker-compose.yml)
+       PKI_DIR=./mtls/test-pki MTLS_ENV=test POSTGRES_PASSWORD=bundle-test \
+       EDGE_NETWORK=fm-bundle-test-edge
+# The host's ingress network stands in as a plain network; the port overlay
+# lets the checks reach the proxy from here.
+C=(docker compose -p fm-bundle-test -f deploy/docker-compose.yml -f deploy/docker-compose.port.yml)
 "${C[@]}" down -v >/dev/null 2>&1 || true
-cleanup() { [ "${KEEP:-0}" = 1 ] || "${C[@]}" down -v >/dev/null 2>&1 || true; }
+docker network create "$EDGE_NETWORK" >/dev/null 2>&1 || true
+cleanup() {
+    [ "${KEEP:-0}" = 1 ] && return
+    "${C[@]}" down -v >/dev/null 2>&1 || true
+    docker network rm "$EDGE_NETWORK" >/dev/null 2>&1 || true
+}
 trap cleanup EXIT
 
 log "starting bundle (proxy on :$PROXY_PORT)"

@@ -15,7 +15,7 @@ All four project images are published with the same tags (`sha-<short>`, `form-m
 Requirements: Linux with Docker Engine and the Compose plugin (v2).
 
     # from the repository's deploy/ folder
-    cp .env.example .env     # FM_TAG, POSTGRES_PASSWORD, PROXY_PORT
+    cp .env.example .env     # FM_TAG, POSTGRES_PASSWORD, EDGE_NETWORK (no published port)
     # ca.pem, server.pem, server.key, allowlist.map into ./pki/
     docker compose up -d
     docker compose ps        # db, hapi, sidecar healthy; loader exited 0

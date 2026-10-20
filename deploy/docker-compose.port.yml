@@ -1,0 +1,7 @@
+# Optional: publish the proxy on a host port instead of (or in addition to)
+# reaching it over EDGE_NETWORK. Used by CI and for standalone hosts.
+#   docker compose -f docker-compose.yml -f docker-compose.port.yml up -d
+services:
+  proxy:
+    ports:
+      - "${PROXY_PORT:-443}:8443"

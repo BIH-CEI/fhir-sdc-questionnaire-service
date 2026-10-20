@@ -1,9 +1,10 @@
 # FHIR SDC Form Manager — deployment bundle.
 #
 # Published images only; no repo checkout, no build, no bind-mounted source.
-# Only the mTLS proxy is reachable from outside. See deploy/README.md.
+# Only the mTLS proxy is reachable, over the host's existing network
+# (EDGE_NETWORK); no port is published. See deploy/README.md.
 #
-#   cp .env.example .env    # set FM_TAG, POSTGRES_PASSWORD, PROXY_PORT
+#   cp .env.example .env    # set FM_TAG, POSTGRES_PASSWORD, EDGE_NETWORK
 #   # put ca.pem, server.pem, server.key, allowlist.map into ./pki/
 #   docker compose up -d
 #
@@ -91,19 +92,25 @@ services:
       MTLS_ENV: ${MTLS_ENV:-production}
       HAPI_UPSTREAM: hapi:8080
       SIDECAR_UPSTREAM: sidecar:8000
-    ports:
-      - "${PROXY_PORT:-443}:8443"
+    # No published port: the proxy joins the host's existing network
+    # (EDGE_NETWORK), where the ingress reaches it as fhir-sdc-form-manager:8443.
+    # Standalone with a host port: add -f docker-compose.port.yml.
     volumes:
       - ${PKI_DIR:-./pki}/ca.pem:/etc/nginx/mtls/ca.pem:ro
       - ${PKI_DIR:-./pki}/server.pem:/etc/nginx/mtls/server.pem:ro
       - ${PKI_DIR:-./pki}/server.key:/etc/nginx/mtls/server.key:ro
       - ${PKI_DIR:-./pki}/allowlist.map:/etc/nginx/mtls/allowlist.map:ro
-    networks: [backend, frontend]
+    networks:
+      backend: {}
+      edge:
+        aliases: [fhir-sdc-form-manager]
 
 networks:
   backend:
     internal: true   # no route to the outside: db, hapi, loader, sidecar
-  frontend: {}
+  edge:
+    external: true   # the host's existing network; must exist before `up`
+    name: ${EDGE_NETWORK:?set EDGE_NETWORK to the existing network the ingress uses}
 
 volumes:
   postgres_data:
