@@ -12,7 +12,7 @@ Title: "SDC Form Manager"
 * experimental = false
 * date = "2026-10-19"
 * publisher = "Berlin Institute of Health at Charité (BIH-CEI)"
-* description = "Capabilities of the BIH-CEI SDC Form Manager as seen by clients through the mTLS proxy: HAPI FHIR 8.12 (content, terminology, Clinical Reasoning) plus the sidecar operations under the same FHIR base."
+* description = "Capabilities of the BIH-CEI SDC Form Manager as seen by sites through the mTLS proxy: a read-only content and terminology service (HAPI FHIR 8.12) plus the sidecar operations under the same FHIR base. No patient data is accepted."
 * kind = #instance
 * instantiates = "http://hl7.org/fhir/uv/sdc/CapabilityStatement/sdc-form-manager"
 * software.name = "BIH-CEI FHIR SDC Form Manager"
@@ -23,7 +23,7 @@ Title: "SDC Form Manager"
 * format[+] = #xml
 
 * rest[0].mode = #server
-* rest[=].documentation = "One FHIR base (`[base]/fhir/`). `$package`, `$localize`, `$languages` and `$compute-and-extract` on Questionnaire are answered by the sidecar; everything else by HAPI. Errors are OperationOutcome resources."
+* rest[=].documentation = "One FHIR base (`[base]/fhir/`), read-only for sites: GET/HEAD, plus POST only for ValueSet $expand/$validate-code, CodeSystem $lookup/$validate-code/$subsumes and Questionnaire $package/$localize. Content changes only through package updates. `$package`, `$localize` and `$languages` on Questionnaire are answered by the sidecar; everything else by HAPI. Errors are OperationOutcome resources."
 * rest[=].security.description = "Mutual TLS: a client certificate issued by a trusted CA is required (401 otherwise), and its SHA-1 fingerprint must be on the site allowlist (403 otherwise). See the Access page."
 
 * rest[=].resource[0].type = #Questionnaire
@@ -44,26 +44,13 @@ Title: "SDC Form Manager"
 * rest[=].resource[=].operation[=].definition = Canonical(QuestionnaireLocalize)
 * rest[=].resource[=].operation[+].name = "languages"
 * rest[=].resource[=].operation[=].definition = Canonical(QuestionnaireLanguages)
-* rest[=].resource[=].operation[+].name = "compute-and-extract"
-* rest[=].resource[=].operation[=].definition = Canonical(QuestionnaireComputeAndExtract)
-* rest[=].resource[=].operation[+].name = "populate"
-* rest[=].resource[=].operation[=].definition = "http://hl7.org/fhir/uv/sdc/OperationDefinition/Questionnaire-populate"
-* rest[=].resource[=].operation[=].documentation = "HAPI Clinical Reasoning."
-
-* rest[=].resource[+].type = #QuestionnaireResponse
-* rest[=].resource[=].interaction[0].code = #create
-* rest[=].resource[=].interaction[+].code = #read
-* rest[=].resource[=].interaction[+].code = #search-type
-* rest[=].resource[=].operation[0].name = "extract"
-* rest[=].resource[=].operation[=].definition = "http://hl7.org/fhir/uv/sdc/OperationDefinition/QuestionnaireResponse-extract"
-* rest[=].resource[=].operation[=].documentation = "HAPI Clinical Reasoning (does not evaluate calculatedExpression; use $compute-and-extract for scores)."
 
 * rest[=].resource[+].type = #ValueSet
 * rest[=].resource[=].interaction[0].code = #read
 * rest[=].resource[=].interaction[+].code = #search-type
 * rest[=].resource[=].operation[0].name = "expand"
 * rest[=].resource[=].operation[=].definition = "http://hl7.org/fhir/OperationDefinition/ValueSet-expand"
-* rest[=].resource[=].operation[=].documentation = "Runtime expansion; the packages ship ValueSets without expansion."
+* rest[=].resource[=].operation[=].documentation = "Runtime expansion (GET or POST); the packages ship ValueSets without expansion."
 
 * rest[=].resource[+].type = #CodeSystem
 * rest[=].resource[=].interaction[0].code = #read

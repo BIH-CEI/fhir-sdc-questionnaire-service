@@ -6,11 +6,11 @@ This guide is the contract for those sites and for the people who run the servic
 
 | Part | Role |
 |------|------|
-| **Form Manager** (HAPI FHIR 8.12) | Stores and serves all content; terminology (`ValueSet/$expand`); Clinical Reasoning (`$populate`, `$extract`, CQL `Library/$evaluate`) |
-| **Sidecar** (FastAPI) | Operations HAPI lacks or gets wrong: CRMI `$package`, `$localize`, `$languages`, `$compute-and-extract` |
-| **mTLS proxy** (nginx) | The only entry point: client-certificate check, site allowlist, one FHIR base |
+| **Form Manager** (HAPI FHIR 8.12) | Stores and serves all content; terminology (`ValueSet/$expand`) |
+| **Sidecar** (FastAPI) | Operations HAPI lacks or gets wrong: CRMI `$package`, `$localize`, `$languages` |
+| **mTLS proxy** (nginx) | The only entry point: client-certificate check, site allowlist, read-only rules, one FHIR base |
 
-For clients it is **one FHIR server** at `https://<host>/fhir/`. The [CapabilityStatement](CapabilityStatement-sdc-form-manager.html) lists what it supports.
+For sites it is **one read-only FHIR server** at `https://<host>/fhir/`. The [CapabilityStatement](CapabilityStatement-sdc-form-manager.html) lists what it supports.
 
 ### Content
 
