@@ -3,7 +3,7 @@ All content is baked into the server image at build time; the server needs no ne
 | Content | Package | Notes |
 |---------|---------|-------|
 | SDC | `hl7.fhir.uv.sdc` 4.0.0 | Forms standard (profiles, extensions) |
-| MII PRO | `de.medizininformatikinitiative.kerndatensatz.pros` 2027.0.0-ballot.1 | Current; **2026.7.0 retained** next to it |
+| MII PRO | `de.medizininformatikinitiative.kerndatensatz.pros` 2027.0.0-ballot.2 | Current; **2026.7.0 and 2027.0.0-ballot.1 retained** next to it |
 | PRO Library | `bih-cei.fhir.pro-library` 0.1.4 | BIH-CEI Questionnaires with CQL scoring Libraries and a CRMI release manifest |
 | PCOR-MII | `pcor-mii` 0.3.0 | Project IG on top of MII PRO |
 

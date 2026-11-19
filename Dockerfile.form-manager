@@ -6,8 +6,8 @@
 # requesting only scalar defines via expression= anyway.
 # Details: ARCHITECTURE.md -> 'clinical-reasoning >= 4.9 Parameters-Converter'.
 ARG HAPI_BASE=hapiproject/hapi:v8.12.0-2@sha256:0ff86aac4c7bd13a1ee226444a70263bb46ed1c28ef543c30a44f865b80ca04e
-ARG MII_PRO_VERSION=2027.0.0-ballot.1
-ARG MII_PRO_SHA256=5085656d8ff49cf10a2e14f9f80c0b6f683c51a1dd190838761604df1e57f0db
+ARG MII_PRO_VERSION=2027.0.0-ballot.2
+ARG MII_PRO_SHA256=0763e59c3443ee554d4e5ff9a4bed21076bad6badf7c81800685d5f660023fef
 ARG SDC_VERSION=4.0.0
 ARG SDC_SHA256=d785be8474c7ec7988e32e326430d9ca4aeb2cac4a1f195022e4d6f7dc5c5291
 # Older MII PRO versions kept as first-class content (profiles + terminology
@@ -16,7 +16,7 @@ ARG SDC_SHA256=d785be8474c7ec7988e32e326430d9ca4aeb2cac4a1f195022e4d6f7dc5c5291
 # local-packages/de.medizininformatikinitiative.kerndatensatz.pros-<v>.tgz.
 # Needed so QuestionnaireResponses pinned to an earlier version keep resolving
 # (see ARCHITECTURE.md "Version retention"). Empty string = latest only.
-ARG MII_PRO_RETAINED_VERSIONS="2026.7.0"
+ARG MII_PRO_RETAINED_VERSIONS="2026.7.0 2027.0.0-ballot.1"
 # "Our" versions — single source of truth lives in versions.env at repo root.
 # CI sources versions.env and passes --build-arg; docker-compose reads it via
 # `env_file:`. NO defaults here on purpose: builds must be explicit about the
