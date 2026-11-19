@@ -35,7 +35,7 @@ All targets load `versions.env`. A bare `docker run` of the image serves termino
 | Form Manager itself | 0.2.0 | `versions.env` `FORM_MANAGER_VERSION` | Manually |
 | HAPI FHIR | 8.12.0 (image `v8.12.0-2`, cqf-fhir-cr 4.13.0; tag + digest) | `Dockerfile.form-manager` `HAPI_BASE` | Renovate (custom regex manager) |
 | SDC `hl7.fhir.uv.sdc` | 4.0.0 | Dockerfile ARGs `SDC_VERSION` / `SDC_SHA256` | Manually (Renovate disabled) |
-| MII PRO `de.medizininformatikinitiative.kerndatensatz.pros` | 2027.0.0-ballot.1 (ballot) | Dockerfile ARGs `MII_PRO_VERSION` / `MII_PRO_SHA256` | Renovate; `auto-pin-pro-sha.yml` re-pins the SHA |
+| MII PRO `de.medizininformatikinitiative.kerndatensatz.pros` | 2027.0.0-ballot.2 (ballot) | Dockerfile ARGs `MII_PRO_VERSION` / `MII_PRO_SHA256` | Renovate; `auto-pin-pro-sha.yml` re-pins the SHA |
 | PRO Library `bih-cei.fhir.pro-library` | 0.1.4 | `versions.env` + vendored tgz in `local-packages/` | Manually |
 | PCOR-MII `pcor-mii` | 0.3.0 (gh-pages build of 2026-10-14) | `versions.env` + vendored tgz in `local-packages/` | Renovate (`auto-vendor-pcor-mii.yml`), or `make bump-pcor-mii` |
 

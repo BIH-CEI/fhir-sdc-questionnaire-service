@@ -135,5 +135,5 @@ async def test_retained_versions_do_not_bring_observationdefinitions(fhir_server
     current version's copy and must not create a second one per id."""
     r = await fhir_server.get("/ObservationDefinition", params={"_summary": "count"})
     total = r.json().get("total", 0)
-    # One per MII PRO OD (47 at 2027.0.0-ballot.1) plus PRO Library's own.
+    # One per MII PRO OD (49 at 2027.0.0-ballot.2) plus PRO Library's own.
     assert 40 <= total <= 70, f"unexpected ObservationDefinition count {total} — duplicates from a retained version?"
